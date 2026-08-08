@@ -627,5 +627,67 @@ def trends(
     asyncio.run(_run())
 
 
+@app.command()
+def digest(
+    days: Annotated[int, typer.Option(help="Window length in days")] = 7,
+    min_score: Annotated[float, typer.Option(help="Minimum signal score to include")] = 0.5,
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+) -> None:
+    """Generate the weekly intelligence digest and store it in the database.
+
+    Requires PROPINTEL_LLM__API_KEY to produce narrative text; falls back to
+    a plain signal list when the key is absent.
+    """
+    from app.services.digest import run_digest
+
+    async def _run() -> None:
+        async with session_scope() as session:
+            if dry_run:
+                from app.models.signal import Signal
+
+                signal_count = await session.scalar(
+                    select(func.count()).select_from(Signal).where(Signal.score >= min_score)
+                )
+                typer.echo(f"  would include up to {signal_count} signals in digest")
+                return
+            stats = await run_digest(session, period_days=days, min_score=min_score)
+            typer.secho(str(stats), fg=typer.colors.GREEN)
+
+    asyncio.run(_run())
+
+
+@app.command("deliver-alerts")
+def deliver_alerts(
+    hours: Annotated[int, typer.Option(help="Look back this many hours for new signals")] = 25,
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+) -> None:
+    """Fan out new signals to matching active alert subscriptions.
+
+    Requires PROPINTEL_NOTIFY__RESEND_API_KEY (email) or
+    PROPINTEL_NOTIFY__SLACK_WEBHOOK_URL (Slack) to actually deliver.
+    """
+    from app.services.alert_delivery import deliver_alerts as _deliver
+
+    async def _run() -> None:
+        async with session_scope() as session:
+            if dry_run:
+                from datetime import timedelta
+
+                from app.models.alert import Alert
+
+                active = await session.scalar(
+                    select(func.count()).select_from(Alert).where(Alert.is_active.is_(True))
+                )
+                typer.echo(f"  {active} active alerts would be checked")
+                return
+            from datetime import UTC, datetime, timedelta
+
+            since_dt = datetime.now(UTC) - timedelta(hours=hours)
+            stats = await _deliver(session, since=since_dt)
+            typer.secho(str(stats), fg=typer.colors.GREEN)
+
+    asyncio.run(_run())
+
+
 if __name__ == "__main__":
     app()

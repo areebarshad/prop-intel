@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -79,3 +79,65 @@ class PaginatedSignals(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+# ── RAG ────────────────────────────────────────────────────────────────────────
+
+class AskQuery(BaseModel):
+    q: str = Field(min_length=1, max_length=1000)
+    firm_id: UUID | None = None
+    top_k: int = Field(default=8, ge=1, le=20)
+    min_similarity: float = Field(default=0.35, ge=0.0, le=1.0)
+
+
+class Citation(BaseModel):
+    url: str | None
+    page_number: int | None
+    excerpt: str
+
+
+class AskAnswer(BaseModel):
+    answer: str
+    citations: list[Citation]
+    query: str
+    passages_found: int
+
+
+# ── Digest ─────────────────────────────────────────────────────────────────────
+
+class DigestOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    period_start: date
+    period_end: date
+    title: str | None
+    markdown: str
+    signal_count: int
+    firm_count: int
+    signal_ids: list[str]
+    generated_at: datetime | None
+
+
+# ── Alerts ─────────────────────────────────────────────────────────────────────
+
+class AlertCreate(BaseModel):
+    user_id: UUID
+    name: str = Field(min_length=1, max_length=200)
+    filters: dict[str, Any] = Field(default_factory=dict)
+    channel: str = Field(default="email", pattern="^(email|slack)$")
+    channel_target: str | None = None
+
+
+class AlertOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    user_id: UUID
+    name: str
+    filters: dict[str, Any]
+    channel: str
+    channel_target: str | None
+    is_active: bool
+    last_fired_at: datetime | None
+    fire_count: int
