@@ -138,6 +138,24 @@ class TestTeamParser:
             # except in genuine internal capitals which contain no space.
             assert member.name.count(" ") <= 3
 
+    def test_a_job_title_is_not_stored_as_a_persons_name(self) -> None:
+        """Regression: when a card's real name was rejected the parser fell through
+        to using the title ('Managing Director') as the name instead."""
+        html = """
+        <html><body>
+          <div class="team-member"><h3>View Profile</h3><p>Managing Director</p></div>
+          <div class="team-member"><h3>Jane Doe</h3><p>Senior Vice President</p></div>
+          <div class="team-member"><h3>Robert Smith</h3><p>Chief Investment Officer</p></div>
+          <div class="team-member"><h3>Maria Vargas</h3><p>Director of Acquisitions</p></div>
+        </body></html>
+        """
+        roster = TeamParser().parse(_result(html))
+
+        assert roster is not None
+        names = {m.name for m in roster.members}
+        assert "Managing Director" not in names
+        assert "View Profile" not in names
+
     def test_a_page_with_no_people_returns_none(self) -> None:
         """None rather than an empty roster: an empty roster downstream would
         mark every existing employee as departed."""

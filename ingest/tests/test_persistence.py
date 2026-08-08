@@ -22,7 +22,7 @@ from app.models.document import RawDocument
 from app.models.enums import SourceKind
 from app.models.firm import Firm, FirmAlias
 from app.models.source import Source
-from ingest.runner import FetchOutcome, content_hash, persist_document
+from ingest.runner import FetchOutcome, content_hash, looks_like_bot_challenge, persist_document
 from ingest.seeds.loader import SeedError, seed_firms, validate_firms
 
 _TEMPLATE = (
@@ -165,6 +165,50 @@ class TestContentHashDedupe:
 
     def test_different_text_hashes_differently(self, body: str) -> None:
         assert content_hash(body) != content_hash(body + ".")
+
+
+class TestBotChallengeDetection:
+    """looks_like_bot_challenge and its effect on persist_document."""
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Performing security verification please wait",
+            "Checking your browser before accessing the site",
+            "Enable JavaScript and cookies to continue",
+            "Verify you are human to proceed",
+            "DDoS protection by Cloudflare",
+            "Please enable cookies to continue",
+            "Request unsuccessful. Incapsula incident id",
+            "Access denied — you do not have permission to access this resource",
+        ],
+    )
+    def test_detects_challenge_interstitials(self, text: str) -> None:
+        assert looks_like_bot_challenge(text)
+
+    def test_does_not_flag_real_content(self) -> None:
+        real = (
+            "Fairfax County Planning Commission approved a 240-unit multifamily "
+            "development at 7312 Braddock Road. The applicant, Stanley Martin Companies, "
+            "filed the site plan in January and expects construction to begin this summer. "
+            "The project is valued at approximately $45 million and will include retail."
+        )
+        assert not looks_like_bot_challenge(real)
+
+    async def test_bot_challenge_page_is_not_stored(
+        self, session: AsyncSession, source: Source
+    ) -> None:
+        challenge = (
+            "Performing security verification — please wait while we check your browser. "
+            "This process is automatic. Your browser will redirect shortly. "
+            "DDoS protection by Cloudflare. Ray ID: abc123. Performance & security."
+        )
+        result = await persist_document(
+            session, source=source, url="https://x.test/blocked", cleaned_text=challenge
+        )
+
+        assert result.outcome is FetchOutcome.BOT_CHALLENGE
+        assert result.document_id is None
 
 
 class TestSeedLoader:
