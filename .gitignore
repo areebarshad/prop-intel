@@ -221,3 +221,4 @@ __marimo__/
 .env
 *.pdf.cache
 scratch/
+Session Tracking.md
