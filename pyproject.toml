@@ -1,0 +1,105 @@
+[project]
+name = "propintel"
+version = "0.1.0"
+description = "Vertical intelligence platform for Virginia commercial real estate."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "areebarshad" }]
+dependencies = [
+    "propintel-backend",
+    "propintel-ingest",
+]
+
+[tool.uv]
+# The root is a container for the workspace, not an importable package. Without
+# this, uv puts the repo root on sys.path and the `ingest/` directory shadows the
+# installed `ingest` package as a namespace package.
+package = false
+
+[tool.uv.workspace]
+members = ["backend", "ingest"]
+
+[tool.uv.sources]
+propintel-backend = { workspace = true }
+propintel-ingest = { workspace = true }
+# Local checkout during development. For CI/deploy, override with:
+#   webscraper-core = { git = "https://github.com/areebarshad/WebScraper" }
+webscraper-core = { path = "../WebScraper", editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "respx>=0.21",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "types-PyYAML>=6.0",
+    "types-requests>=2.32",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["backend/alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.ruff.lint.isort]
+# Both workspace packages are first-party; without this, `app` and `ingest`
+# imports get sorted into the third-party block.
+known-first-party = ["app", "ingest"]
+
+[tool.ruff.lint.flake8-bugbear]
+# Typer and FastAPI use Option()/Argument()/Depends() calls as parameter defaults by design.
+extend-immutable-calls = [
+    "typer.Option",
+    "typer.Argument",
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["backend/tests", "ingest/tests"]
+# Test directories deliberately have no __init__.py. That keeps `backend/tests`
+# and `ingest/tests` from colliding as two packages both named `tests`, and it
+# keeps pytest from fabricating a parent module named `ingest` for
+# `ingest/tests/...`, which would shadow the real installed `ingest` package.
+# The tradeoff: test file basenames must stay unique across both packages.
+filterwarnings = [
+    "error::DeprecationWarning:propintel.*",
+    # PyMuPDF ships SWIG bindings that trip this on import.
+    "ignore::DeprecationWarning:importlib._bootstrap",
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
+exclude = ["backend/alembic/versions/"]
+# Two source roots. Without these, mypy derives module names from bare paths
+# and mis-resolves them across the two packages.
+mypy_path = ["backend", "ingest/src"]
+explicit_package_bases = true
+packages = ["app", "ingest"]
+
+[[tool.mypy.overrides]]
+# Alembic's generated env is not worth typing strictly.
+module = ["alembic.*"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+# webscraper-core is fully typed and passes `mypy --strict` in its own repo, but
+# ships no `py.typed` marker, so mypy resolves its exports to Any here and
+# refuses the subclassing our parsers and schemas depend on. Adding the marker
+# upstream is the real fix; until then, allow subclassing in the modules that
+# extend it. Their own annotations are still checked normally.
+module = ["ingest.parsers.*", "ingest.schemas.*"]
+disallow_subclassing_any = false

@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "propintel-ingest"
+version = "0.1.0"
+description = "Scrapers, document ingesters, and open-data adapters feeding PropIntel."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "areebarshad" }]
+dependencies = [
+    "propintel-backend",
+    # The user's own scraper: robots gating, throttling, httpx/Playwright routing,
+    # Pydantic record validation, opt-in Claude extraction fallback.
+    "webscraper-core",
+    "httpx[http2]>=0.27",
+    "selectolax>=0.3.21",
+    "beautifulsoup4>=4.12",
+    "trafilatura>=1.8",
+    "pymupdf>=1.24",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "python-dateutil>=2.9",
+]
+
+[project.optional-dependencies]
+dynamic = ["playwright>=1.45"]
+
+[project.scripts]
+propintel-ingest = "ingest.cli:app"
+
+[tool.hatch.build.targets.wheel]
+# src layout, matching webscraper-core. Without it the workspace directory
+# `ingest/` shadows the `ingest` package on sys.path during test collection.
+packages = ["src/ingest"]

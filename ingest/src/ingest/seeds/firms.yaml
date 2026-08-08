@@ -1,0 +1,345 @@
+# PropIntel seed firms — Virginia commercial real estate.
+#
+# Coverage: Northern Virginia and Richmond first, with Hampton Roads firms
+# included where they are material regional players (Armada Hoffler, S.L.
+# Nusbaum) or operate across both markets.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# `verified: true` means the domain returned 200 from a live HEAD request on
+# 2026-08-08, following redirects, and the row records the final canonical URL.
+# `verified: false` means it did not resolve and needs a human to supply the
+# real domain — a wrong domain either fails loudly (fine) or silently crawls an
+# unrelated company and attributes its filings to a firm that never made them.
+#
+#   uv run propintel-ingest verify-seeds        # re-check; sites move
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Field notes:
+#   aliases      Trade names, former names, and the shapes a permit clerk types.
+#                These seed `firm_aliases` directly, so the first filing under a
+#                known alias resolves exactly instead of costing an LLM call.
+#   focus_areas  Free text; drives the search facets.
+#   asset_classes Must be values from app.models.enums.AssetClass.
+#   firm_type    Must be a value from app.models.enums.FirmType.
+#   localities   Counties and independent cities, matching permit-portal naming.
+#   careers_path Relative path appended to website for the careers crawl. Null
+#                means "discover it" — the crawler looks for common paths.
+
+version: 1
+default_state: VA
+
+firms:
+  # ── Northern Virginia ──────────────────────────────────────────────────────
+
+  - name: Stanley Martin Homes
+    website: https://www.stanleymartin.com
+    firm_type: developer
+    aliases:
+      - Stanley Martin Companies, LLC
+      - Stanley Martin Companies
+      - Stanley Martin
+    city: Reston
+    county: Fairfax
+    focus_areas: [homebuilding, mixed_use, land_development]
+    asset_classes: [multifamily, mixed_use, land]
+    localities: [Fairfax, Loudoun, Prince William, Arlington, Richmond, Henrico, Chesterfield]
+    careers_path: /careers
+    verified: true
+
+  - name: KETTLER
+    website: https://www.kettler.com
+    firm_type: developer
+    aliases:
+      - Kettler Inc
+      - Kettler Management
+      - KETTLER Development
+    city: McLean
+    county: Fairfax
+    focus_areas: [multifamily_development, property_management, mixed_use]
+    asset_classes: [multifamily, mixed_use, office]
+    localities: [Fairfax, Arlington, Loudoun, Alexandria, Prince William]
+    careers_path: /careers
+    verified: true
+
+  - name: The Peterson Companies
+    website: https://www.petersoncos.com
+    firm_type: developer
+    aliases:
+      - Peterson Companies
+      - Peterson Cos
+      - Peterson Companies LP
+    city: Fairfax
+    county: Fairfax
+    focus_areas: [mixed_use, retail_development, master_planned_communities]
+    asset_classes: [mixed_use, retail, office, land]
+    localities: [Fairfax, Loudoun, Prince William, Arlington]
+    careers_path: /careers
+    verified: true
+
+  - name: B. F. Saul Company
+    website: https://bfsaul.com
+    firm_type: developer
+    aliases:
+      - BF Saul
+      - B.F. Saul Real Estate Investment Trust
+      - Saul Centers
+    city: Bethesda
+    county: Montgomery
+    # Headquartered in Maryland but a major NoVA developer; tracked because its
+    # filings appear throughout Fairfax and Arlington.
+    state: MD
+    focus_areas: [mixed_use, hospitality, office_development]
+    asset_classes: [office, retail, hospitality, mixed_use]
+    localities: [Fairfax, Arlington, Alexandria, Loudoun]
+    careers_path: /careers
+    verified: true
+
+  - name: Comstock Holding Companies, Inc.
+    website: https://comstock.com
+    firm_type: developer
+    aliases:
+      - Comstock Holding Companies
+      - Comstock Partners
+      - CHCI
+      - Comstock Companies
+    city: Reston
+    county: Fairfax
+    focus_areas: [transit_oriented_development, mixed_use, asset_management]
+    asset_classes: [mixed_use, multifamily, office]
+    localities: [Fairfax, Loudoun, Arlington]
+    careers_path: /careers
+    verified: true
+
+  - name: JBG SMITH Properties
+    website: https://www.jbgsmith.com
+    firm_type: developer
+    aliases:
+      - JBG SMITH
+      - JBG Smith Properties LP
+      - The JBG Companies
+    city: Bethesda
+    county: Montgomery
+    state: MD
+    focus_areas: [mixed_use, multifamily, national_landing]
+    asset_classes: [multifamily, office, mixed_use, retail]
+    localities: [Arlington, Alexandria, Fairfax]
+    careers_path: /careers
+    verified: true
+
+  - name: Merritt Properties
+    website: https://www.merrittproperties.com
+    firm_type: developer
+    aliases:
+      - Merritt Properties LLC
+      - Merritt Construction Services
+    city: Baltimore
+    county: Baltimore
+    state: MD
+    focus_areas: [flex_industrial, warehouse, business_parks]
+    asset_classes: [industrial, logistics, office]
+    localities: [Loudoun, Prince William, Fairfax, Chesterfield]
+    careers_path: /careers
+    verified: true
+    # Returns 403 to HEAD and to a browser user-agent — bot protection, not a
+    # dead site. The crawl will need a real browser session (Playwright) here.
+    notes: bot-protected; expect 403 from plain HTTP fetches
+
+  - name: Buchanan Partners
+    website: https://buchananpartners.com
+    firm_type: developer
+    aliases:
+      - Buchanan Partners LLC
+    city: Gainesville
+    county: Prince William
+    focus_areas: [industrial_development, mixed_use, office]
+    asset_classes: [industrial, logistics, office, retail]
+    localities: [Prince William, Loudoun, Fairfax]
+    careers_path: null
+    verified: true
+
+  - name: NVR, Inc.
+    website: https://www.nvrinc.com
+    firm_type: developer
+    aliases:
+      - NVR Inc
+      - NVHomes
+      - Ryan Homes
+    city: Reston
+    county: Fairfax
+    focus_areas: [homebuilding, land_development]
+    asset_classes: [multifamily, land]
+    localities: [Fairfax, Loudoun, Prince William, Henrico, Chesterfield]
+    careers_path: /careers
+    verified: true
+
+  # ── Richmond ───────────────────────────────────────────────────────────────
+
+  - name: Cushman & Wakefield | Thalhimer
+    website: https://thalhimer.com
+    firm_type: brokerage
+    aliases:
+      - Thalhimer
+      - Cushman and Wakefield Thalhimer
+      - Cushman & Wakefield Thalhimer
+      - Thalhimer Realty Partners
+    city: Richmond
+    county: Richmond City
+    focus_areas: [brokerage, property_management, capital_markets]
+    asset_classes: [office, retail, industrial, multifamily]
+    localities: [Richmond City, Henrico, Chesterfield, Hanover]
+    careers_path: /careers
+    verified: true
+
+  - name: Thalhimer Realty Partners
+    website: https://thalhimerrealtypartners.com
+    firm_type: developer
+    aliases:
+      - TRP
+      - Thalhimer Realty Partners Inc
+    city: Richmond
+    county: Richmond City
+    # The development arm, distinct from the brokerage above. Kept separate so
+    # a development filing is not attributed to the brokerage's activity.
+    focus_areas: [mixed_use, adaptive_reuse, multifamily_development]
+    asset_classes: [mixed_use, multifamily, retail]
+    localities: [Richmond City, Henrico, Chesterfield]
+    careers_path: null
+    verified: true
+
+  - name: Capital Square
+    website: https://capitalsq.com
+    firm_type: investor
+    aliases:
+      - Capital Square 1031
+      - Capital Square Holdings
+    city: Glen Allen
+    county: Henrico
+    focus_areas: [1031_exchange, multifamily_investment, opportunity_zones]
+    asset_classes: [multifamily, mixed_use]
+    localities: [Richmond City, Henrico, Chesterfield]
+    careers_path: /careers
+    verified: true
+
+  - name: Gumenick Properties
+    website: https://www.gumenick.com
+    firm_type: developer
+    aliases:
+      - Gumenick Properties LLC
+      - The Gumenick Companies
+    city: Richmond
+    county: Henrico
+    focus_areas: [multifamily_development, mixed_use, property_management]
+    asset_classes: [multifamily, mixed_use, retail]
+    localities: [Henrico, Richmond City]
+    careers_path: null
+    verified: true
+
+  # ── Hampton Roads / statewide ──────────────────────────────────────────────
+
+  - name: Armada Hoffler Properties
+    website: https://ahrealtytrust.com
+    firm_type: developer
+    aliases:
+      - Armada Hoffler
+      - Armada Hoffler Properties Inc
+      - AHH
+      - Armada Hoffler Construction
+    city: Virginia Beach
+    county: Virginia Beach
+    focus_areas: [mixed_use, general_construction, reit]
+    asset_classes: [mixed_use, office, retail, multifamily]
+    localities: [Virginia Beach, Norfolk, Chesapeake, Richmond City, Henrico]
+    careers_path: /careers
+    verified: true
+
+  - name: S.L. Nusbaum Realty Co.
+    website: https://slnusbaum.com
+    firm_type: brokerage
+    aliases:
+      - SL Nusbaum
+      - S L Nusbaum Realty
+      - Nusbaum Realty
+    city: Norfolk
+    county: Norfolk
+    focus_areas: [brokerage, multifamily_management, development]
+    asset_classes: [multifamily, retail, office]
+    localities: [Norfolk, Virginia Beach, Chesapeake, Richmond City, Henrico]
+    careers_path: /careers
+    verified: true
+
+  - name: Harvey Lindsay Commercial Real Estate
+    website: https://harveylindsay.com
+    firm_type: brokerage
+    aliases:
+      - Harvey Lindsay
+      - Harvey Lindsay Commercial
+    city: Norfolk
+    county: Norfolk
+    focus_areas: [brokerage, property_management, industrial]
+    asset_classes: [office, industrial, retail]
+    localities: [Norfolk, Virginia Beach, Chesapeake]
+    careers_path: null
+    verified: true
+
+  - name: Divaris Real Estate
+    website: https://www.divaris.com
+    firm_type: brokerage
+    aliases:
+      - Divaris Real Estate Inc
+      - Divaris Property Management
+    city: Virginia Beach
+    county: Virginia Beach
+    focus_areas: [retail_brokerage, property_management, leasing]
+    asset_classes: [retail, office, mixed_use]
+    localities: [Virginia Beach, Norfolk, Richmond City, Henrico]
+    careers_path: null
+    verified: true
+
+  # ── Added 2026-08-08, each confirmed against the live site's <title> ────────
+
+  - name: Eagle Construction of Virginia
+    website: https://www.eagleofva.com
+    firm_type: developer
+    aliases:
+      - Eagle Construction
+      - Markel Eagle Partners
+      - Markel | Eagle Partners
+      - Eagle Construction of VA LLC
+    city: Glen Allen
+    county: Henrico
+    focus_areas: [homebuilding, residential_land, master_planned_communities]
+    asset_classes: [multifamily, land]
+    localities: [Henrico, Chesterfield, Richmond City, Hanover]
+    careers_path: /careers
+    verified: true
+    # The Markel | Eagle investment arm has no separately reachable domain;
+    # its aliases resolve here so filings under either name attribute correctly.
+
+  - name: Bonaventure
+    website: https://bonaventure.com
+    firm_type: investor
+    aliases:
+      - Bonaventure Realty Group
+      - Bonaventure Multifamily
+    city: Alexandria
+    county: Alexandria
+    focus_areas: [multifamily_investment, development, property_management]
+    asset_classes: [multifamily, mixed_use]
+    localities: [Alexandria, Arlington, Fairfax, Richmond City, Henrico, Virginia Beach]
+    careers_path: /careers
+    verified: true
+
+  - name: Hourigan
+    website: https://www.hourigan.group
+    firm_type: general_contractor
+    aliases:
+      - Hourigan Construction
+      - Hourigan Group
+      - Hourigan Development
+    city: Richmond
+    county: Richmond City
+    focus_areas: [general_construction, development, life_sciences]
+    asset_classes: [office, industrial, mixed_use, multifamily]
+    localities: [Richmond City, Henrico, Chesterfield, Virginia Beach]
+    careers_path: /careers
+    verified: true

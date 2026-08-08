@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Never a real database in CI: the suite is offline by design so it runs on
+  # every push without provisioning Postgres. Integration tests that need a
+  # live database belong in a separate, opt-in workflow.
+  PROPINTEL_DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ci
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The ingest package depends on webscraper-core from a sibling checkout.
+      - name: Check out webscraper-core
+        uses: actions/checkout@v4
+        with:
+          repository: areebarshad/WebScraper
+          path: ../WebScraper
+        continue-on-error: true
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --all-packages --dev
+
+      - name: Lint
+        run: |
+          uv run ruff check
+          uv run ruff format --check
+
+      - name: Type check
+        run: uv run mypy backend/app ingest/src/ingest
+
+      - name: Test
+        run: uv run pytest -q
+
+      # Proves the migration chain still reproduces the models and that the
+      # SQL it emits is valid — without needing a database.
+      - name: Render migrations
+        run: cd backend && uv run alembic upgrade head --sql > /dev/null

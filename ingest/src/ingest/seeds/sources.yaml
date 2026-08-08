@@ -1,0 +1,207 @@
+# PropIntel seed sources — where documents come from.
+#
+# Firm-specific sources (team pages, press releases, careers) are generated
+# from firms.yaml at seed time; this file holds the jurisdiction-wide ones.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# VERIFY BEFORE THE FIRST CRAWL. Municipal portals move constantly — a URL that
+# 404s is a locality that silently looks inactive.
+#
+#   uv run propintel-ingest verify-seeds --kind permit_portal
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Prefer `open_data_api` over `permit_portal` wherever a locality publishes one.
+# An ArcGIS or Socrata endpoint returns typed JSON with stable field names,
+# carries no robots ambiguity, and does not break when the portal is restyled.
+# HTML portal scraping is the fallback, not the default.
+#
+# config keys by kind:
+#   open_data_api  service_url, layer_id (ArcGIS) or domain, dataset_id (Socrata),
+#                  date_field, applicant_field, and the field map
+#   zoning_minutes index_url, link_pattern (which links on the index are agendas)
+
+version: 1
+
+sources:
+  # ── Northern Virginia ──────────────────────────────────────────────────────
+
+  - name: Fairfax County — Recent Building Permits (ArcGIS)
+    kind: open_data_api
+    locality: Fairfax
+    base_url: https://www.fairfaxcounty.gov/mercator/rest/services/LDS/DevelopmentTracker/FeatureServer/4
+    cadence_hours: 12
+    adapter: arcgis
+    config:
+      service_url: https://www.fairfaxcounty.gov/mercator/rest/services/LDS/DevelopmentTracker/FeatureServer
+      layer_id: 4
+      date_field: ISSUED_DATE
+    verified: true
+    notes: >-
+      Confirmed live. IMPORTANT: this layer has no applicant, owner, or
+      contractor column — PROJECT_NAME is the only name available, and it names
+      the project or tenant rather than the developer. Most permits therefore
+      cannot be attributed to a tracked firm from this feed alone; linking the
+      rest needs a parcel join against a separate ownership source.
+
+  - name: Fairfax County — Data Center Development (ArcGIS)
+    kind: open_data_api
+    locality: Fairfax
+    base_url: https://www.fairfaxcounty.gov/mercator/rest/services/LDS/DevelopmentTracker/FeatureServer/0
+    cadence_hours: 24
+    adapter: arcgis
+    config:
+      service_url: https://www.fairfaxcounty.gov/mercator/rest/services/LDS/DevelopmentTracker/FeatureServer
+      layer_id: 0
+      date_field: SUBMITTED_DATE
+      field_map:
+        RECORDID: permit_number
+        APPTYPEALIAS: permit_type
+        PROJECT_NAME: applicant_name_raw
+        PARCEL_ID: parcel_id
+        RECORD_STATUS: status
+        SUBMITTED_DATE: filed_date
+        APPROVED_DATE: issued_date
+        MAR_ADDRESS: address
+        LINK_URL: source_url
+    verified: true
+    notes: >-
+      Data center site plans — the highest-value NoVA asset class right now, and
+      the layer where PROJECT_NAME most often carries a recognizable company.
+
+  - name: Fairfax County — Planning Commission Agendas
+    kind: zoning_minutes
+    locality: Fairfax
+    base_url: https://www.fairfaxcounty.gov/planningcommission/meeting-schedule
+    cadence_hours: 24
+    scrape_task: zoning_minutes
+    config:
+      link_pattern: '\.pdf$'
+    verified: false
+
+  - name: Loudoun County — Permits and Land Development (ArcGIS)
+    kind: open_data_api
+    locality: Loudoun
+    base_url: https://geohub-loudoungis.opendata.arcgis.com
+    cadence_hours: 12
+    adapter: arcgis
+    config:
+      service_url: null # FILL
+      layer_id: 0
+    verified: false
+
+  - name: Loudoun County — Planning Commission
+    kind: zoning_minutes
+    locality: Loudoun
+    base_url: https://www.loudoun.gov/planningcommission
+    cadence_hours: 24
+    scrape_task: zoning_minutes
+    config:
+      link_pattern: '\.pdf$'
+    verified: false
+
+  - name: Arlington County — Open Data
+    kind: open_data_api
+    locality: Arlington
+    base_url: https://data.arlingtonva.us
+    cadence_hours: 12
+    adapter: socrata
+    config:
+      domain: data.arlingtonva.us
+      dataset_id: null # FILL: 4x4 dataset identifier for permits
+    verified: false
+
+  - name: Prince William County — Land Development
+    kind: permit_portal
+    locality: Prince William
+    base_url: https://www.pwcva.gov/department/development-services
+    cadence_hours: 24
+    scrape_task: permit
+    verified: false
+
+  - name: City of Alexandria — Open Data
+    kind: open_data_api
+    locality: Alexandria
+    base_url: https://data.alexandriava.gov
+    cadence_hours: 24
+    adapter: socrata
+    config:
+      domain: data.alexandriava.gov
+      dataset_id: null # FILL
+    verified: false
+
+  # ── Richmond ───────────────────────────────────────────────────────────────
+
+  - name: City of Richmond — Open Data Portal
+    kind: open_data_api
+    locality: Richmond City
+    base_url: https://data.richmondgov.com
+    cadence_hours: 12
+    adapter: socrata
+    config:
+      domain: data.richmondgov.com
+      dataset_id: null # FILL
+    verified: false
+
+  - name: Richmond — Planning Commission Agendas
+    kind: zoning_minutes
+    locality: Richmond City
+    base_url: https://www.rva.gov/planning-development-review
+    cadence_hours: 24
+    scrape_task: zoning_minutes
+    config:
+      link_pattern: '\.pdf$'
+    verified: false
+
+  - name: Henrico County — Open Data (ArcGIS)
+    kind: open_data_api
+    locality: Henrico
+    base_url: https://data-henrico.opendata.arcgis.com
+    cadence_hours: 12
+    adapter: arcgis
+    config:
+      service_url: null # FILL
+      layer_id: 0
+    verified: false
+
+  - name: Henrico County — Planning Commission
+    kind: zoning_minutes
+    locality: Henrico
+    base_url: https://henrico.gov/planning
+    cadence_hours: 24
+    scrape_task: zoning_minutes
+    config:
+      link_pattern: '\.pdf$'
+    verified: false
+
+  - name: Chesterfield County — Open Data (ArcGIS)
+    kind: open_data_api
+    locality: Chesterfield
+    base_url: https://data-chesterfield.opendata.arcgis.com
+    cadence_hours: 12
+    adapter: arcgis
+    config:
+      service_url: null # FILL
+      layer_id: 0
+    verified: false
+
+  # ── Trade press ────────────────────────────────────────────────────────────
+  #
+  # News sources are for corroboration and narrative, never as the primary
+  # record of a filing — a permit is a fact, a news article is a report of one.
+  # Respect each publisher's robots.txt; webscraper-core enforces it.
+
+  - name: Virginia Business — Real Estate
+    kind: news
+    locality: null
+    base_url: https://virginiabusiness.com/category/real-estate/
+    cadence_hours: 12
+    scrape_task: press_release
+    verified: false
+
+  - name: Richmond BizSense — Real Estate
+    kind: news
+    locality: Richmond City
+    base_url: https://richmondbizsense.com/category/real-estate/
+    cadence_hours: 12
+    scrape_task: press_release
+    verified: false
