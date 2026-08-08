@@ -75,8 +75,32 @@ sources:
     cadence_hours: 24
     scrape_task: zoning_minutes
     config:
+      follow_links: true
       link_pattern: '\.pdf$'
+      max_links: 20
     verified: false
+
+  - name: Fairfax County — Real Property Ownership (ArcGIS)
+    kind: open_data_api
+    locality: Fairfax
+    base_url: https://www.fairfaxcounty.gov/maps/rest/services/PropertyInfo/FeatureServer/0
+    cadence_hours: 168
+    adapter: arcgis
+    config:
+      service_url: https://www.fairfaxcounty.gov/maps/rest/services/PropertyInfo/FeatureServer
+      layer_id: 0
+      date_field: null
+      field_map:
+        GeoPin: parcel_id
+        OwnerName: applicant_name_raw
+        SitusAddress: address
+    verified: false
+    notes: >-
+      VERIFY URL BEFORE USE. The exact service path and layer index for the
+      Fairfax Real Property ownership table must be confirmed at
+      https://www.fairfaxcounty.gov/gis. Run verify-seeds before the first
+      enrich-permits run. Used by `propintel-ingest enrich-permits` to attribute
+      the 419 unlinked permits that carry a parcel_id but no applicant name.
 
   - name: Loudoun County — Permits and Land Development (ArcGIS)
     kind: open_data_api
@@ -196,6 +220,11 @@ sources:
     base_url: https://virginiabusiness.com/category/real-estate/
     cadence_hours: 12
     scrape_task: press_release
+    config:
+      follow_links: true
+      # Match links that look like individual article pages (date slug in path)
+      link_pattern: 'virginiabusiness\.com/\d{4}/\d{2}/'
+      max_links: 30
     verified: false
 
   - name: Richmond BizSense — Real Estate
@@ -204,4 +233,8 @@ sources:
     base_url: https://richmondbizsense.com/category/real-estate/
     cadence_hours: 12
     scrape_task: press_release
+    config:
+      follow_links: true
+      link_pattern: 'richmondbizsense\.com/\d{4}/\d{2}/'
+      max_links: 30
     verified: false

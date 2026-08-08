@@ -286,6 +286,18 @@ def _firm_sources(row: dict[str, Any], website: str) -> list[dict[str, Any]]:
                 "base_url": f"{base}{careers_path}",
                 "scrape_task": "careers",
                 "cadence_hours": 72,
+                "config": {
+                    # Many firm careers pages redirect to an ATS portal. Follow
+                    # the link so the actual job listings are fetched, not just
+                    # the "see our jobs on Greenhouse" landing page.
+                    "follow_links": True,
+                    "link_pattern": (
+                        r"greenhouse\.io|lever\.co|myworkdayjobs\.com"
+                        r"|workday\.com|smartrecruiters\.com|ashbyhq\.com"
+                        r"|breezy\.hr|bamboohr\.com|icims\.com"
+                    ),
+                    "max_links": 1,
+                },
             }
         )
     return sources

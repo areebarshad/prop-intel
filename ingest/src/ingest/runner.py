@@ -109,6 +109,13 @@ class BatchStats:
         else:
             self.skipped += 1
 
+    def __iadd__(self, other: BatchStats) -> BatchStats:
+        self.stored += other.stored
+        self.duplicate += other.duplicate
+        self.skipped += other.skipped
+        self.failed += other.failed
+        return self
+
     def __str__(self) -> str:
         return (
             f"{self.stored} stored, {self.duplicate} duplicate, "

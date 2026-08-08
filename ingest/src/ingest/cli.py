@@ -15,6 +15,7 @@ from app.models.document import RawDocument
 from app.models.enums import SourceKind
 from app.models.firm import Firm, FirmAlias
 from app.models.source import Source
+from ingest.crawler import crawl_source
 from ingest.runner import BatchStats, fetch_and_ingest, mark_source_crawled
 from ingest.seeds.loader import SeedError, seed_all
 
@@ -154,14 +155,12 @@ async def _crawl_sources(
             headers={"User-Agent": "PropIntel/0.1"},
         ) as client:
             for source in sources:
-                result = await fetch_and_ingest(
-                    session, source=source, url=source.base_url, client=client
+                source_stats = await crawl_source(session, source, client)
+                stats += source_stats
+                typer.echo(
+                    f"  stored={source_stats.stored} dupes={source_stats.duplicate}"
+                    f"  {source.base_url}"
                 )
-                stats.record(result)
-                await mark_source_crawled(
-                    session, source, error=result.error if result.error else None
-                )
-                typer.echo(f"  {result.outcome.value:14s} {source.base_url}")
 
     return stats
 
@@ -536,6 +535,95 @@ def status() -> None:
                         f"    {source.consecutive_failures}x  {source.name}",
                         fg=typer.colors.YELLOW,
                     )
+
+    asyncio.run(_run())
+
+
+@app.command()
+def embed(
+    limit: Annotated[int | None, typer.Option(help="Max documents to embed per run")] = None,
+    firms_only: Annotated[bool, typer.Option("--firms-only")] = False,
+) -> None:
+    """Chunk stored documents and embed them with sentence-transformers.
+
+    Run after crawl commands to populate document_chunks with vector embeddings
+    for RAG, and firms.embedding for semantic firm search.
+    """
+    from app.services.embedding import embed_firms, embed_pending_documents
+
+    async def _run() -> None:
+        async with session_scope() as session:
+            if not firms_only:
+                doc_stats = await embed_pending_documents(session, limit=limit)
+                typer.secho(f"documents: {doc_stats}", fg=typer.colors.GREEN)
+            firm_stats = await embed_firms(session)
+            typer.secho(f"firms: {firm_stats.firms_embedded} embedded", fg=typer.colors.GREEN)
+
+    asyncio.run(_run())
+
+
+@app.command("enrich-permits")
+def enrich_permits(
+    locality: Annotated[str, typer.Option()] = "Fairfax",
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+) -> None:
+    """Attribute unlinked permits using parcel ownership data.
+
+    Joins permits that have a parcel_id but no firm_id against the county
+    property records (Fairfax Real Property ArcGIS layer) to infer the
+    developer from the owner name.
+
+    The parcel service URL in parcel_enrichment.py must be verified before
+    running against live data (run verify-seeds first).
+    """
+    from app.services.entity_resolution import EntityResolver
+    from app.services.parcel_enrichment import enrich_permits_with_parcel_owners
+    from app.services.permit_ingest import load_firm_records
+
+    async def _run() -> None:
+        async with session_scope() as session:
+            if dry_run:
+                from sqlalchemy import select
+                from app.models.project import Permit
+
+                unlinked = (
+                    await session.scalar(
+                        select(func.count()).select_from(Permit).where(
+                            Permit.firm_id.is_(None),
+                            Permit.parcel_id.is_not(None),
+                            Permit.locality == locality,
+                        )
+                    )
+                ) or 0
+                typer.echo(f"  {unlinked} unattributed {locality} permits with parcel IDs")
+                return
+
+            resolver = EntityResolver(await load_firm_records(session))
+            stats = await enrich_permits_with_parcel_owners(
+                session, resolver, locality=locality
+            )
+            typer.secho(str(stats), fg=typer.colors.GREEN)
+
+    asyncio.run(_run())
+
+
+@app.command()
+def trends(
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+) -> None:
+    """Compute trend windows and emit derived signals (surges, pivots, anomalies)."""
+    from app.services.trend_detection import run_trend_detection
+
+    async def _run() -> None:
+        async with session_scope() as session:
+            if dry_run:
+                firms_count = await session.scalar(
+                    select(func.count()).select_from(Firm)
+                )
+                typer.echo(f"  would process {firms_count} firms")
+                return
+            stats = await run_trend_detection(session)
+            typer.secho(str(stats), fg=typer.colors.GREEN)
 
     asyncio.run(_run())
 
