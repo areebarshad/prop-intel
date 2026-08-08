@@ -189,7 +189,15 @@ class EntityResolver:
         self._by_canonical: dict[str, FirmRecord] = {}
         self._by_alias: dict[str, FirmRecord] = {}
         for firm in firms:
-            self._by_canonical.setdefault(firm.canonical_name, firm)
+            if firm.canonical_name in self._by_canonical:
+                log.warning(
+                    "canonical name collision: %r already mapped to %r, ignoring %r",
+                    firm.canonical_name,
+                    self._by_canonical[firm.canonical_name].name,
+                    firm.name,
+                )
+            else:
+                self._by_canonical[firm.canonical_name] = firm
             for alias in firm.aliases:
                 self._by_alias.setdefault(canonicalize(alias), firm)
 

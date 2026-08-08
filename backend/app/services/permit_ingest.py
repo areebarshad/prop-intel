@@ -200,6 +200,9 @@ async def ingest_permit_records(
         method: str | None = None
         confidence: float | None = None
 
+        ambiguous_mention: str | None = None
+        ambiguous_candidates: list[Any] = []
+
         if record.has_mention:
             resolution = resolver.resolve(
                 Mention(record.applicant_name_raw, address=record.address)
@@ -219,12 +222,10 @@ async def ingest_permit_records(
                     )
             elif resolution.status is ResolutionStatus.AMBIGUOUS:
                 stats.ambiguous += 1
-                await _queue_for_review(
-                    session,
-                    record.applicant_name_raw,
-                    resolution.candidates,
-                    existing.id if existing else None,
-                )
+                # Defer _queue_for_review until after the permit is created so
+                # we can pass the correct permit.id as origin_id.
+                ambiguous_mention = record.applicant_name_raw
+                ambiguous_candidates = resolution.candidates
             else:
                 stats.unattributed += 1
         else:
@@ -260,7 +261,12 @@ async def ingest_permit_records(
         else:
             permit = existing
             for key, value in fields.items():
-                if value is not None:
+                # Always update attribution metadata even when the new value is
+                # None — stale method/confidence on a permit whose re-resolution
+                # failed is misleading and must be cleared.
+                if key in ("resolution_method", "resolution_confidence"):
+                    setattr(permit, key, value)
+                elif value is not None:
                     setattr(permit, key, value)
             # Never clear an attribution that a later run failed to reproduce —
             # a human may have set it, and losing it silently is worse than a
@@ -268,6 +274,15 @@ async def ingest_permit_records(
             if firm_id is not None:
                 permit.firm_id = firm_id
             stats.updated += 1
+
+        # Queue ambiguous mentions now that we have a permit.id to link back to.
+        if ambiguous_mention:
+            await _queue_for_review(
+                session,
+                ambiguous_mention,
+                ambiguous_candidates,
+                permit.id,
+            )
 
         if await _emit_permit_signal(session, permit, record, now):
             stats.signals_created += 1

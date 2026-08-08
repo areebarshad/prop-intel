@@ -23,11 +23,12 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+import statistics
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import AssetClass, SignalType
@@ -65,6 +66,11 @@ class TrendStats:
         )
 
 
+def _snap_to_day(dt: datetime) -> datetime:
+    """Truncate a UTC datetime to midnight so window boundaries are stable."""
+    return dt.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 def _window_dedupe_key(signal_type: str, firm_id: Any, period_start: datetime) -> str:
     raw = f"{signal_type}:{firm_id}:{period_start.date().isoformat()}"
     return hashlib.sha256(raw.encode()).hexdigest()[:40]
@@ -82,7 +88,11 @@ async def _compute_window(
     permit_rows = list(
         (
             await session.execute(
-                select(Permit.permit_type, func.count().label("cnt"), func.sum(Permit.valuation_usd).label("val"))
+                select(
+                        Permit.permit_type,
+                        func.count().label("cnt"),
+                        func.sum(Permit.valuation_usd).label("val"),
+                    )
                 .where(
                     Permit.firm_id == firm_id,
                     Permit.filed_date >= period_start.date(),
@@ -135,12 +145,18 @@ async def _compute_window(
         )
     ) or 0
 
-    # Upsert TrendWindow
+    # Upsert TrendWindow — use is_(None) explicitly for NULL locality so the
+    # WHERE clause compiles to IS NULL rather than = NULL.
+    locality_filter = (
+        TrendWindow.locality.is_(None)
+        if locality is None
+        else TrendWindow.locality == locality
+    )
     existing = (
         await session.execute(
             select(TrendWindow).where(
                 TrendWindow.firm_id == firm_id,
-                TrendWindow.locality == locality,
+                locality_filter,
                 TrendWindow.period_start == period_start,
             )
         )
@@ -267,7 +283,7 @@ async def _detect_hiring_surge(
             f"{current.open_job_count / max(baseline_avg, 1):.1f}× the recent baseline."
         ),
         score=min(0.95, 0.6 + (current.open_job_count / max(baseline_avg, 1) - 1.5) * 0.1),
-        locality=firm.county,
+        locality=None,  # firm-wide signal, not tied to a single locality
         occurred_at=current.period_start,
         payload={
             "current_jobs": current.open_job_count,
@@ -315,7 +331,7 @@ async def _detect_asset_class_pivot(
                     f"{asset_class.replace('_', ' ')} — up from {baseline_share:.0%} historically."
                 ),
                 score=0.75,
-                locality=firm.county,
+                locality=None,  # firm-wide signal, not tied to a single locality
                 occurred_at=current.period_start,
                 payload={
                     "asset_class": asset_class,
@@ -350,14 +366,18 @@ async def _detect_geographic_expansion(
         ).scalars()
     )
 
-    # Prior localities
+    # Prior localities — treat permits with NULL filed_date as prior activity
+    # to avoid false expansion signals when a permit's date is simply missing.
     prior_localities = set(
         (
             await session.execute(
                 select(Permit.locality).distinct().where(
                     Permit.firm_id == firm.id,
                     Permit.locality.is_not(None),
-                    Permit.filed_date < period_start.date(),
+                    or_(
+                        Permit.filed_date < period_start.date(),
+                        Permit.filed_date.is_(None),
+                    ),
                 )
             )
         ).scalars()
@@ -396,8 +416,6 @@ async def _detect_permit_volume_anomaly(
         return
 
     counts = [w.permit_count for w in baseline_windows]
-    import statistics
-
     mean = statistics.mean(counts)
     stdev = statistics.stdev(counts) if len(counts) > 1 else 0.0
     if stdev == 0:
@@ -419,7 +437,7 @@ async def _detect_permit_volume_anomaly(
             f"{zscore:.1f}σ above baseline (avg {mean:.0f})."
         ),
         score=min(0.95, 0.65 + zscore * 0.05),
-        locality=firm.county,
+        locality=None,  # firm-wide signal, not tied to a single locality
         occurred_at=current.period_start,
         payload={
             "permit_count": current.permit_count,
@@ -444,10 +462,16 @@ async def run_trend_detection(
     """Compute the current trend window for every tracked firm and derive signals.
 
     Idempotent: re-running over the same data emits no new signals because
-    derived signals have dedupe_keys scoped to the window period.
+    derived signals have dedupe_keys scoped to the window period. Period
+    boundaries are snapped to midnight UTC so the same window is addressed
+    on every run within a given day.
     """
     stats = TrendStats()
-    now = as_of or datetime.now(UTC)
+    # Snap to midnight UTC so period_start is stable across same-day runs.
+    # Without snapping, a fresh timestamp every run prevents TrendWindow upserts
+    # from matching existing rows, causing unbounded row growth and breaking
+    # dedupe_key stability.
+    now = _snap_to_day(as_of or datetime.now(UTC))
     period_end = now
     period_start = now - timedelta(days=window_days)
 

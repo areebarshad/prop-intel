@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -11,6 +11,27 @@ from app.models.firm import Firm
 from app.schemas import SearchQuery, SearchResult
 
 router = APIRouter(prefix="/search", tags=["search"])
+
+# Module-level cache so the embeddings count is not re-queried on every request.
+# Refreshed on the next request after the TTL, not on a timer.
+_embeddings_cached: bool | None = None
+_embeddings_cache_time: float = 0.0
+_EMBEDDINGS_CACHE_TTL = 300.0  # 5 minutes
+
+
+async def _has_firm_embeddings(db: AsyncSession) -> bool:
+    import time
+
+    global _embeddings_cached, _embeddings_cache_time
+    now = time.monotonic()
+    if _embeddings_cached is None or (now - _embeddings_cache_time) > _EMBEDDINGS_CACHE_TTL:
+        _embeddings_cached = bool(
+            await db.scalar(
+                select(func.count()).select_from(Firm).where(Firm.embedding.is_not(None))
+            )
+        )
+        _embeddings_cache_time = now
+    return _embeddings_cached
 
 
 @router.post("", response_model=SearchResult)
@@ -21,24 +42,21 @@ async def search_firms(body: SearchQuery, db: AsyncSession = Depends(get_db)) ->
     vector cosine-similarity search and re-ranks by score. Falls back to a
     trigram ILIKE keyword search when no embeddings exist.
     """
-    # Check if any firm embeddings exist
-    has_embeddings = bool(
-        await db.scalar(
-            select(func.count()).select_from(Firm).where(Firm.embedding.is_not(None))
-        )
-    )
+    has_embeddings = await _has_firm_embeddings(db)
 
     base_filter = [Firm.is_active.is_(True)]
     if body.asset_classes:
-        base_filter.append(Firm.asset_classes.any_([body.asset_classes]))  # type: ignore[attr-defined]
+        from sqlalchemy import or_
+        base_filter.append(or_(*[Firm.asset_classes.any(ac) for ac in body.asset_classes]))
     if body.localities:
-        base_filter.append(Firm.localities.any_([body.localities]))  # type: ignore[attr-defined]
+        from sqlalchemy import or_
+        base_filter.append(or_(*[Firm.localities.any(loc) for loc in body.localities]))
 
     if has_embeddings:
-        from app.services.embedding import _embed
+        from app.services.embedding import async_embed
 
         try:
-            vector = _embed([body.q])[0]
+            vector = (await async_embed([body.q]))[0]
         except Exception as exc:
             raise HTTPException(status_code=503, detail=f"embedding unavailable: {exc}") from exc
 
@@ -52,12 +70,13 @@ async def search_firms(body: SearchQuery, db: AsyncSession = Depends(get_db)) ->
         firms = list((await db.execute(query)).scalars())
         return {"firms": firms, "query": body.q, "semantic": True}
 
-    # Fallback: trigram keyword search
+    # Fallback: trigram keyword search — apply the same base_filter so
+    # asset_class / locality constraints are respected even without embeddings.
     keyword = f"%{body.q}%"
     query = (
         select(Firm)
         .where(
-            Firm.is_active.is_(True),
+            *base_filter,
             Firm.name.ilike(keyword),
         )
         .order_by(Firm.name)

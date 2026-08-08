@@ -15,13 +15,15 @@ are set in EmbeddingSettings.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import textwrap
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import numpy as np
+from sqlalchemy import exists as sa_exists
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,9 +60,20 @@ def _embed(texts: list[str]) -> list[list[float]]:
     return vectors.tolist()
 
 
+async def async_embed(texts: list[str]) -> list[list[float]]:
+    """Non-blocking wrapper for use inside async FastAPI handlers.
+
+    Runs the CPU-bound model inference in the default thread-pool executor so
+    the event loop is not blocked during the first (model-loading) call or
+    during inference for large batches.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _embed, texts)
+
+
 def _rough_token_count(text: str) -> int:
-    """Approximate token count: 1.3 words per token for English prose."""
-    return max(1, int(len(text.split()) / 1.3))
+    """Approximate token count: English prose averages ~1.3 tokens per word."""
+    return max(1, int(len(text.split()) * 1.3))
 
 
 def chunk_text(text: str, page_number: int | None = None) -> list[dict[str, object]]:
@@ -74,9 +87,9 @@ def chunk_text(text: str, page_number: int | None = None) -> list[dict[str, obje
     overlap = settings.embedding.chunk_overlap_tokens
     words = text.split()
 
-    # Approximate words per chunk
-    words_per_chunk = int(target * 1.3)
-    words_per_overlap = int(overlap * 1.3)
+    # 1.3 tokens per word on average, so divide the token target to get word count.
+    words_per_chunk = max(1, int(target / 1.3))
+    words_per_overlap = max(0, int(overlap / 1.3))
     step = max(1, words_per_chunk - words_per_overlap)
 
     chunks: list[dict[str, object]] = []
@@ -158,19 +171,31 @@ async def embed_pending_documents(
     session: AsyncSession,
     limit: int | None = None,
 ) -> EmbedStats:
-    """Process RawDocuments with extraction_status='pending' into DocumentChunks.
+    """Process un-embedded RawDocuments into DocumentChunks.
 
-    Marks each document 'extracted' on success or 'failed' on error. The
+    Picks up documents in PENDING or EXTRACTED state that have no chunks yet.
+    EXTRACTED documents may have had their domain objects (people, permits)
+    parsed already by the `extract` CLI command, but still need embeddings.
+
+    Marks each document EXTRACTED on success or FAILED on error. The
     extraction_attempts counter guards against infinite retry on broken docs.
     """
     stats = EmbedStats()
 
+    # Select docs with cleaned text that have no chunks yet, regardless of
+    # whether text extraction already ran. The ~exists() guard prevents
+    # re-embedding docs whose chunks were created in a prior run.
+    no_chunks = ~sa_exists().where(DocumentChunk.document_id == RawDocument.id)
     query = (
         select(RawDocument)
         .where(
-            RawDocument.extraction_status == ExtractionStatus.PENDING.value,
+            RawDocument.extraction_status.in_([
+                ExtractionStatus.PENDING.value,
+                ExtractionStatus.EXTRACTED.value,
+            ]),
             RawDocument.cleaned_text.is_not(None),
             RawDocument.extraction_attempts < 3,
+            no_chunks,
         )
         .order_by(RawDocument.fetched_at)
     )
@@ -192,10 +217,10 @@ async def embed_pending_documents(
             texts = [c["text"] for c in raw_chunks]  # type: ignore[index]
             vectors = _embed(texts)
 
-            for idx, (chunk_data, vector) in enumerate(zip(raw_chunks, vectors)):
+            for idx, (chunk_data, vector) in enumerate(zip(raw_chunks, vectors, strict=True)):
                 chunk = DocumentChunk(
                     document_id=doc.id,
-                    firm_id=None,  # populated by _resolve_chunk_firm below
+                    firm_id=None,  # populated by _backfill_chunk_firm_ids below
                     chunk_index=idx,
                     page_number=chunk_data.get("page_number"),  # type: ignore[arg-type]
                     text=chunk_data["text"],  # type: ignore[index]
@@ -216,8 +241,11 @@ async def embed_pending_documents(
 
         stats.documents_processed += 1
 
+    # Flush so the new chunks are visible to the bulk UPDATE that follows.
+    await session.flush()
+
     # Propagate firm_id from source → chunk so RAG can filter by firm without
-    # a join. Done in bulk after all chunks are created.
+    # a join. Done in bulk after all chunks are flushed.
     await _backfill_chunk_firm_ids(session)
 
     return stats
@@ -293,7 +321,7 @@ async def embed_firms(session: AsyncSession) -> EmbedStats:
     texts = [_firm_profile_text(f) for f in firms]
     vectors = _embed(texts)
 
-    for firm, vector in zip(firms, vectors):
+    for firm, vector in zip(firms, vectors, strict=True):
         firm.embedding = vector
         firm.embedding_updated_at = datetime.now(UTC)
         stats.firms_embedded += 1

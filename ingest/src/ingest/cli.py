@@ -16,7 +16,7 @@ from app.models.enums import SourceKind
 from app.models.firm import Firm, FirmAlias
 from app.models.source import Source
 from ingest.crawler import crawl_source
-from ingest.runner import BatchStats, fetch_and_ingest, mark_source_crawled
+from ingest.runner import BatchStats, mark_source_crawled
 from ingest.seeds.loader import SeedError, seed_all
 
 app = typer.Typer(
@@ -583,7 +583,6 @@ def enrich_permits(
     async def _run() -> None:
         async with session_scope() as session:
             if dry_run:
-                from sqlalchemy import select
                 from app.models.project import Permit
 
                 unlinked = (
@@ -618,7 +617,7 @@ def trends(
         async with session_scope() as session:
             if dry_run:
                 firms_count = await session.scalar(
-                    select(func.count()).select_from(Firm)
+                    select(func.count()).select_from(Firm).where(Firm.is_active.is_(True))
                 )
                 typer.echo(f"  would process {firms_count} firms")
                 return

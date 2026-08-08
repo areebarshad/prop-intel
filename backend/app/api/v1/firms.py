@@ -5,13 +5,13 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.models.firm import Firm
 from app.models.signal import Signal
-from app.schemas import FirmDetail, FirmSummary, FirmTimeline, SignalOut
+from app.schemas import FirmDetail, FirmSummary, FirmTimeline
 
 router = APIRouter(prefix="/firms", tags=["firms"])
 
@@ -56,15 +56,15 @@ async def firm_timeline(
     if firm is None:
         raise HTTPException(status_code=404, detail="firm not found")
 
-    count_query = select(Signal).where(Signal.firm_id == firm_id)
+    count_base = select(func.count()).select_from(Signal).where(Signal.firm_id == firm_id)
     if signal_types:
-        count_query = count_query.where(Signal.signal_type.in_(signal_types))
+        count_base = count_base.where(Signal.signal_type.in_(signal_types))
+    total = (await db.scalar(count_base)) or 0
 
-    total = len(list((await db.execute(count_query)).scalars()))
-
-    signals_query = (
-        count_query.order_by(Signal.occurred_at.desc()).limit(limit).offset(offset)
-    )
+    signals_query = select(Signal).where(Signal.firm_id == firm_id)
+    if signal_types:
+        signals_query = signals_query.where(Signal.signal_type.in_(signal_types))
+    signals_query = signals_query.order_by(Signal.occurred_at.desc()).limit(limit).offset(offset)
     signals = list((await db.execute(signals_query)).scalars())
 
     return {

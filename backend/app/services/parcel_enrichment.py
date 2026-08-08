@@ -17,14 +17,16 @@ before the first run. Mark it as verified: true in sources.yaml once confirmed.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.project import Permit
 from app.models.signal import Signal
-from app.services.entity_resolution import EntityResolver, ResolutionOutcome
+from app.services.entity_resolution import EntityResolver, Mention, Resolution
+from app.services.permit_ingest import _record_alias
 
 log = logging.getLogger(__name__)
 
@@ -48,7 +50,8 @@ class ParcelEnrichStats:
     parcel_ids_fetched: int = 0
     permits_attributed: int = 0
     permits_queued: int = 0
-    permits_unmatched: int = 0
+    permits_no_owner: int = 0      # no row in the parcel service
+    permits_unresolved: int = 0    # owner row found but resolver returned unmatched/ambiguous
     errors: int = 0
 
     def __str__(self) -> str:
@@ -57,7 +60,8 @@ class ParcelEnrichStats:
             f"{self.parcel_ids_fetched} parcel lookups, "
             f"{self.permits_attributed} attributed, "
             f"{self.permits_queued} queued, "
-            f"{self.permits_unmatched} unmatched"
+            f"{self.permits_no_owner} no owner row, "
+            f"{self.permits_unresolved} unresolved"
         )
 
 
@@ -79,8 +83,10 @@ async def fetch_parcel_owners(
 
     import httpx
 
-    # ArcGIS query: IN operator on the parcel ID field
-    id_list = ", ".join(f"'{pid}'" for pid in parcel_ids[:100])  # ArcGIS WHERE clause
+    # Sanitize parcel IDs to prevent ArcGIS WHERE clause corruption; Fairfax
+    # GeoPin values are numeric strings but be defensive.
+    safe_ids = [pid.replace("'", "") for pid in parcel_ids]
+    id_list = ", ".join(f"'{pid}'" for pid in safe_ids)
     where = f"{parcel_id_field} IN ({id_list})"
     params = {
         "where": where,
@@ -169,17 +175,16 @@ async def enrich_permits_with_parcel_owners(
                 continue
             owner_name = owner_map.get(permit.parcel_id)
             if not owner_name:
-                stats.permits_unmatched += 1
+                stats.permits_no_owner += 1
                 continue
 
             permit.applicant_name_raw = owner_name
-            outcome: ResolutionOutcome = resolver.resolve(owner_name)
+            outcome: Resolution = resolver.resolve(Mention(owner_name))
 
-            if outcome.status == ResolutionStatus.RESOLVED:
-                permit.firm_id = outcome.firm_id
-                permit.resolution_method = outcome.method
+            if outcome.status == ResolutionStatus.RESOLVED and outcome.firm_id:
+                permit.firm_id = UUID(outcome.firm_id)
+                permit.resolution_method = outcome.method.value if outcome.method else None
                 permit.resolution_confidence = outcome.confidence
-                permit.resolution_status = ResolutionStatus.RESOLVED.value
                 stats.permits_attributed += 1
                 log.debug(
                     "permit %s attributed to %s via parcel owner %r",
@@ -187,6 +192,17 @@ async def enrich_permits_with_parcel_owners(
                     outcome.firm_id,
                     owner_name,
                 )
+
+                # Memoize so the next encounter with this owner resolves instantly.
+                if outcome.should_write_alias and outcome.method:
+                    await _record_alias(
+                        session,
+                        outcome.firm_id,
+                        owner_name,
+                        outcome.method,
+                        outcome.confidence,
+                    )
+
                 # Backfill firm_id on any existing signal for this permit so
                 # the timeline and digest reflect the now-known developer.
                 dedupe_key = f"permit:{permit.locality}:{permit.permit_number}"
@@ -196,13 +212,12 @@ async def enrich_permits_with_parcel_owners(
                     )
                 ).scalar_one_or_none()
                 if existing_signal is not None and existing_signal.firm_id is None:
-                    existing_signal.firm_id = outcome.firm_id
+                    existing_signal.firm_id = UUID(outcome.firm_id)
 
             elif outcome.status == ResolutionStatus.AMBIGUOUS:
-                permit.resolution_status = ResolutionStatus.AMBIGUOUS.value
                 stats.permits_queued += 1
+                stats.permits_unresolved += 1
             else:
-                permit.resolution_status = ResolutionStatus.UNMATCHED.value
-                stats.permits_unmatched += 1
+                stats.permits_unresolved += 1
 
     return stats

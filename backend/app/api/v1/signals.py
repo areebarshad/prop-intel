@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.models.signal import Signal
-from app.schemas import PaginatedSignals, SignalOut
+from app.schemas import PaginatedSignals
 
 router = APIRouter(prefix="/signals", tags=["signals"])
 

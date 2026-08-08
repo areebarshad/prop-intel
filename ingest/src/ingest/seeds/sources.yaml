@@ -76,7 +76,7 @@ sources:
     scrape_task: zoning_minutes
     config:
       follow_links: true
-      link_pattern: '\.pdf$'
+      link_pattern: 'fairfaxcounty\.gov.*\.pdf'
       max_links: 20
     verified: false
 
