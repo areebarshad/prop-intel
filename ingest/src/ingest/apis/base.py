@@ -11,11 +11,14 @@ calls it `permit_number`.
 
 from __future__ import annotations
 
+import dataclasses
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any
+
+import httpx
 
 
 def epoch_millis_to_date(value: Any) -> date | None:
@@ -84,6 +87,15 @@ class PermitRecord:
         return bool(self.applicant_name_raw and self.applicant_name_raw.strip())
 
 
+# Fields that may come from a field_map — excludes those always passed explicitly.
+_EXPLICIT_PERMIT_FIELDS: frozenset[str] = frozenset(
+    {"locality", "permit_number", "mention_field", "raw"}
+)
+VALID_MAPPED_ATTRS: frozenset[str] = (
+    frozenset(f.name for f in dataclasses.fields(PermitRecord)) - _EXPLICIT_PERMIT_FIELDS
+)
+
+
 class OpenDataAdapter(ABC):
     """Pulls permit records from one locality's open-data endpoint."""
 
@@ -104,6 +116,10 @@ class OpenDataAdapter(ABC):
 
     @abstractmethod
     def fetch(
-        self, *, since: date | None = None, limit: int | None = None
+        self,
+        *,
+        since: date | None = None,
+        limit: int | None = None,
+        client: httpx.AsyncClient | None = None,
     ) -> AsyncIterator[PermitRecord]:
-        """Yield permit records, newest first where the endpoint supports it."""
+        """Yield permit records, oldest-first for stable offset pagination."""

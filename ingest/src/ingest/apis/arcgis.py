@@ -24,6 +24,7 @@ import httpx
 from ingest.apis.base import (
     OpenDataAdapter,
     PermitRecord,
+    VALID_MAPPED_ATTRS,
     epoch_millis_to_date,
     to_float,
 )
@@ -127,12 +128,15 @@ class ArcGISAdapter(OpenDataAdapter):
             values["lat"] = to_float(geometry.get("y"))
             values["lon"] = to_float(geometry.get("x"))
 
+        # Bug 46: filter to known PermitRecord fields so invalid field_map targets
+        # don't crash with TypeError on unexpected keyword arguments.
+        safe_values = {k: v for k, v in values.items() if k in VALID_MAPPED_ATTRS}
         return PermitRecord(
             locality=self.locality,
             permit_number=str(permit_number),
             mention_field=mention_field,
             raw=attributes,
-            **values,
+            **safe_values,
         )
 
     async def fetch(
@@ -162,7 +166,8 @@ class ArcGISAdapter(OpenDataAdapter):
                 }
                 date_field = self.config.get("date_field")
                 if date_field:
-                    params["orderByFields"] = f"{date_field} DESC"
+                    # Bug 47: ASC keeps offset stable when new records arrive mid-crawl.
+                    params["orderByFields"] = f"{date_field} ASC"
 
                 response = await client.get(self.query_url, params=params)
                 response.raise_for_status()

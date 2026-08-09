@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-from ingest.apis.base import OpenDataAdapter, PermitRecord, parse_iso_date, to_float
+from ingest.apis.base import OpenDataAdapter, PermitRecord, VALID_MAPPED_ATTRS, parse_iso_date, to_float
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +38,20 @@ class SocrataAdapter(OpenDataAdapter):
 
     name = "socrata"
 
+    # Used when no field_map is supplied in config.
+    DEFAULT_FIELD_MAP: dict[str, str] = {
+        "permit_number": "permit_number",
+        "permit_type": "permit_type",
+        "description": "description",
+        "applicant_name": "applicant_name_raw",
+        "address": "address",
+        "parcel_id": "parcel_id",
+        "valuation": "valuation_usd",
+        "filed_date": "filed_date",
+        "issued_date": "issued_date",
+        "status": "status",
+    }
+
     DATE_ATTRS = {"filed_date", "issued_date"}
     FLOAT_ATTRS = {"valuation_usd", "lat", "lon"}
 
@@ -45,6 +59,10 @@ class SocrataAdapter(OpenDataAdapter):
         for key in ("domain", "dataset_id"):
             if not self.config.get(key):
                 raise ValueError(f"{self.locality}: socrata source needs config.{key}")
+        if "permit_number" not in self.field_map.values():
+            raise ValueError(
+                f"{self.locality}: field_map must map a source column to 'permit_number'"
+            )
 
     @property
     def query_url(self) -> str:
@@ -52,7 +70,8 @@ class SocrataAdapter(OpenDataAdapter):
 
     @property
     def field_map(self) -> dict[str, str]:
-        return dict(self.config.get("field_map") or {})
+        mapping = self.config.get("field_map")
+        return dict(mapping) if mapping else dict(self.DEFAULT_FIELD_MAP)
 
     def _to_record(self, row: dict[str, Any]) -> PermitRecord | None:
         mapping = self.field_map
@@ -76,12 +95,15 @@ class SocrataAdapter(OpenDataAdapter):
         if not permit_number:
             return None
 
+        # Bug 46: filter to known PermitRecord fields so invalid field_map targets
+        # don't crash with TypeError on unexpected keyword arguments.
+        safe_values = {k: v for k, v in values.items() if k in VALID_MAPPED_ATTRS}
         return PermitRecord(
             locality=self.locality,
             permit_number=str(permit_number),
             mention_field=mention_field,
             raw=row,
-            **values,
+            **safe_values,
         )
 
     async def fetch(
@@ -93,12 +115,14 @@ class SocrataAdapter(OpenDataAdapter):
     ) -> AsyncIterator[PermitRecord]:
         self.validate()
 
-        headers = {"User-Agent": "PropIntel/0.1"}
+        # Bug 48: build token header separately so it is applied regardless of
+        # whether the client was created here or passed in by the caller.
+        token_header: dict[str, str] = {}
         if self.config.get("app_token"):
-            headers["X-App-Token"] = str(self.config["app_token"])
+            token_header["X-App-Token"] = str(self.config["app_token"])
 
         owns_client = client is None
-        client = client or httpx.AsyncClient(timeout=45.0, headers=headers)
+        client = client or httpx.AsyncClient(timeout=45.0, headers={"User-Agent": "PropIntel/0.1"})
         yielded = 0
         offset = 0
 
@@ -110,11 +134,13 @@ class SocrataAdapter(OpenDataAdapter):
                 }
                 date_field = self.config.get("date_field")
                 if date_field:
-                    params["$order"] = f"{date_field} DESC"
+                    # Bug 47: ASC sort keeps offset stable when new records arrive
+                    # during a crawl; DESC would shift pages and skip rows.
+                    params["$order"] = f"{date_field} ASC"
                     if since:
                         params["$where"] = f"{date_field} >= '{since.isoformat()}'"
 
-                response = await client.get(self.query_url, params=params)
+                response = await client.get(self.query_url, params=params, headers=token_header)
                 response.raise_for_status()
                 rows = response.json()
                 if not rows:
