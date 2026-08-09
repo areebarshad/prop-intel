@@ -11,6 +11,7 @@ Usage:
 
 from __future__ import annotations
 
+import html
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -281,7 +282,7 @@ async def deliver_digest(
     stats.recipients = len(users)
 
     subject = digest.title or f"PropIntel Weekly Digest — {digest.period_start}"
-    html_body = f"<pre style='font-family:monospace;white-space:pre-wrap'>{digest.markdown}</pre>"
+    html_body = f"<pre style='font-family:monospace;white-space:pre-wrap'>{html.escape(digest.markdown)}</pre>"
 
     api_key = settings.notify.resend_api_key.get_secret_value()
     async with httpx.AsyncClient(timeout=15.0) as client:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 
 import bcrypt
@@ -12,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, rate_limited_ip
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas import (
@@ -25,12 +26,17 @@ from app.schemas import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _prehash(plain: str) -> bytes:
+    # SHA-256 digest keeps bcrypt input to 32 bytes, safely below its 72-byte limit.
+    return hashlib.sha256(plain.encode()).digest()
+
+
 def _hash_password(plain: str) -> str:
-    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
+    return bcrypt.hashpw(_prehash(plain), bcrypt.gensalt()).decode()
 
 
 def _verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode(), hashed.encode())
+    return bcrypt.checkpw(_prehash(plain), hashed.encode())
 
 
 def _issue_token(user_id: str) -> str:
@@ -54,6 +60,7 @@ def _issue_token(user_id: str) -> str:
 async def register(
     body: RegisterRequest,
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(rate_limited_ip),
 ) -> TokenResponse:
     existing = (
         await db.execute(select(User).where(User.email == body.email))
@@ -83,6 +90,7 @@ async def register(
 async def login(
     body: LoginRequest,
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(rate_limited_ip),
 ) -> TokenResponse:
     user = (
         await db.execute(select(User).where(User.email == body.email))

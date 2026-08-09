@@ -17,7 +17,7 @@ import logging
 from datetime import UTC, datetime
 
 import jwt
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,23 +55,38 @@ async def _get_redis():
     return _redis_client
 
 
+_LUA_RATE_LIMIT = """
+local key = KEYS[1]
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local limit = tonumber(ARGV[3])
+local ttl = tonumber(ARGV[4])
+local raw = redis.call('GET', key)
+if raw then
+    local sep = string.find(raw, ':', 1, true)
+    local wstart = tonumber(string.sub(raw, 1, sep - 1))
+    local count  = tonumber(string.sub(raw, sep + 1))
+    if now - wstart < window then
+        if count >= limit then return 0 end
+        redis.call('SETEX', key, ttl, wstart .. ':' .. (count + 1))
+        return 1
+    end
+end
+redis.call('SETEX', key, ttl, now .. ':1')
+return 1
+"""
+
+
 async def _check_rate_limit(uid: str, limit: int) -> None:
     now = datetime.now(UTC).timestamp()
     redis = await _get_redis()
 
     if redis is not None:
-        # Redis atomic check-and-set via a 65-second TTL string: "window_start:count"
         key = f"rl:{uid}"
         try:
-            raw = await redis.get(key)
-            if raw:
-                window_start, count = map(float, raw.split(":", 1))
-                if now - window_start < 60:
-                    if count >= limit:
-                        raise HTTPException(status_code=429, detail="rate limit exceeded")
-                    await redis.setex(key, 65, f"{window_start}:{count + 1}")
-                    return
-            await redis.setex(key, 65, f"{now}:1")
+            result = await redis.eval(_LUA_RATE_LIMIT, 1, key, now, 60, limit, 65)
+            if result == 0:
+                raise HTTPException(status_code=429, detail="rate limit exceeded")
             return
         except HTTPException:
             raise
@@ -139,3 +154,10 @@ async def rate_limited_user(user: User = Depends(get_current_user)) -> User:
     limit = settings.ratelimit.for_tier(user.tier)
     await _check_rate_limit(str(user.id), limit)
     return user
+
+
+async def rate_limited_ip(request: Request) -> None:
+    """IP-based rate limit for unauthenticated endpoints (login, register)."""
+    client_ip = request.client.host if request.client else "unknown"
+    key = f"ip:{_hash_key(client_ip)}"
+    await _check_rate_limit(key, settings.ratelimit.anonymous_per_minute)
