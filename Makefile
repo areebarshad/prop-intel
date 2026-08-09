@@ -43,11 +43,11 @@ ingest:  ## Run a full ingest pass over active sources
 	uv run propintel-ingest permits
 	uv run propintel-ingest zoning
 	uv run propintel-ingest careers
-	uv run propintel-ingest resolve
+	uv run propintel-ingest enrich-permits
 
 .PHONY: embed
-embed:  ## Backfill embeddings for chunks and firm cards
-	uv run propintel-ingest embed --backfill
+embed:  ## Embed chunks and firm cards
+	uv run propintel-ingest embed
 
 .PHONY: detect
 detect:  ## Run trend and anomaly detection
