@@ -18,6 +18,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const detail = await res.text().catch(() => res.statusText);
     throw new Error(`${res.status} ${detail}`);
   }
+  if (res.status === 204 || res.headers.get("content-length") === "0") {
+    return null as T;
+  }
   return res.json() as Promise<T>;
 }
 

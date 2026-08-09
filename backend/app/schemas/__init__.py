@@ -225,8 +225,8 @@ class ApiKeyOut(BaseModel):
     name: str
     key_prefix: str
     tier: str
-    last_used_at: datetime | None
-    expires_at: datetime | None
+    last_used_at: datetime | None = None
+    expires_at: datetime | None = None
     created_at: datetime
 
 
