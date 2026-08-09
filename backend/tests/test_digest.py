@@ -12,7 +12,9 @@ from app.services.digest import (
 
 
 class _FakeSig:
-    def __init__(self, signal_type: SignalType, title: str, score: float, occurred_at: object = None) -> None:
+    def __init__(
+        self, signal_type: SignalType, title: str, score: float, occurred_at: object = None
+    ) -> None:
         self.signal_type = signal_type
         self.title = title
         self.score = score

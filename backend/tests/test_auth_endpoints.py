@@ -29,7 +29,9 @@ def _existing_result(user: object) -> MagicMock:
 
 
 class TestRegister:
-    async def test_register_returns_201_and_token(self, client: AsyncClient, db_mock: AsyncMock) -> None:
+    async def test_register_returns_201_and_token(
+        self, client: AsyncClient, db_mock: AsyncMock
+    ) -> None:
         db_mock.execute.return_value = _no_result()
 
         resp = await client.post(
@@ -101,7 +103,9 @@ class TestRegister:
 
         assert resp.status_code == 201
 
-    async def test_password_too_short_returns_422(self, client: AsyncClient, db_mock: AsyncMock) -> None:
+    async def test_password_too_short_returns_422(
+        self, client: AsyncClient, db_mock: AsyncMock
+    ) -> None:
         db_mock.execute.return_value = _no_result()
 
         resp = await client.post(
@@ -143,7 +147,9 @@ class TestLogin:
         assert isinstance(body["access_token"], str)
         assert body["user_id"] == str(user.id)
 
-    async def test_login_wrong_password_returns_401(self, client: AsyncClient, db_mock: AsyncMock) -> None:
+    async def test_login_wrong_password_returns_401(
+        self, client: AsyncClient, db_mock: AsyncMock
+    ) -> None:
         user = _make_user(
             email="login2@example.com",
             hashed_password=_hash_password("right-password"),
@@ -171,7 +177,9 @@ class TestLogin:
 
         assert resp.status_code == 401
 
-    async def test_login_inactive_user_returns_403(self, client: AsyncClient, db_mock: AsyncMock) -> None:
+    async def test_login_inactive_user_returns_403(
+        self, client: AsyncClient, db_mock: AsyncMock
+    ) -> None:
         user = _make_user(
             email="inactive@example.com",
             hashed_password=_hash_password("pw123456"),

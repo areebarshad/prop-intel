@@ -15,12 +15,16 @@ pytestmark = pytest.mark.asyncio
 
 
 class TestCreateKey:
-    async def test_create_key_returns_201(self, authed_client: AsyncClient, db_mock: AsyncMock) -> None:
+    async def test_create_key_returns_201(
+        self, authed_client: AsyncClient, db_mock: AsyncMock
+    ) -> None:
         resp = await authed_client.post("/api/v1/keys", json={"name": "my-integration-key"})
 
         assert resp.status_code == 201
 
-    async def test_create_key_response_schema(self, authed_client: AsyncClient, db_mock: AsyncMock) -> None:
+    async def test_create_key_response_schema(
+        self, authed_client: AsyncClient, db_mock: AsyncMock
+    ) -> None:
         resp = await authed_client.post("/api/v1/keys", json={"name": "schema-test"})
 
         assert resp.status_code == 201
@@ -50,7 +54,9 @@ class TestCreateKey:
         resp = await authed_client.post("/api/v1/keys", json={"name": ""})
         assert resp.status_code == 422
 
-    async def test_create_key_no_auth_returns_422(self, client: AsyncClient, db_mock: AsyncMock) -> None:
+    async def test_create_key_no_auth_returns_422(
+        self, client: AsyncClient, db_mock: AsyncMock
+    ) -> None:
         """Without auth override the header is missing → 422 (missing required header)."""
         resp = await client.post("/api/v1/keys", json={"name": "no-auth"})
         assert resp.status_code in (401, 422)
