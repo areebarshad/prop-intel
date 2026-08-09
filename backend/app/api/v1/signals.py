@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, nullslast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -42,7 +42,7 @@ async def list_signals(
     items = list(
         (
             await db.execute(
-                base.order_by(Signal.occurred_at.desc()).limit(limit).offset(offset)
+                base.order_by(nullslast(Signal.occurred_at.desc())).limit(limit).offset(offset)
             )
         ).scalars()
     )

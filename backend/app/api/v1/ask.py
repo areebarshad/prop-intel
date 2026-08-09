@@ -5,14 +5,20 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.deps import rate_limited_user
 from app.db.session import get_db
+from app.models.user import User
 from app.schemas import AskAnswer, AskQuery
 
 router = APIRouter(prefix="/ask", tags=["ask"])
 
 
 @router.post("", response_model=AskAnswer)
-async def ask_question(body: AskQuery, db: AsyncSession = Depends(get_db)) -> dict:
+async def ask_question(
+    body: AskQuery,
+    current_user: User = Depends(rate_limited_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
     """Answer a natural-language question using the PropIntel document corpus.
 
     Returns a grounded answer (sourced from crawled documents) plus citations

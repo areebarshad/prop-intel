@@ -6,7 +6,7 @@ from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 
 class FirmSummary(BaseModel):
@@ -37,6 +37,11 @@ class FirmDetail(FirmSummary):
     founded_year: int | None
     embedding_updated_at: datetime | None
 
+    @computed_field
+    @property
+    def employees_count(self) -> int | None:
+        return self.employee_count
+
 
 class SignalOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -54,11 +59,25 @@ class SignalOut(BaseModel):
     payload: dict[str, Any]
     is_derived: bool
 
+    @computed_field
+    @property
+    def body(self) -> str | None:
+        return self.summary
+
 
 class FirmTimeline(BaseModel):
     firm: FirmDetail
     signals: list[SignalOut]
     total: int
+    page: int
+    page_size: int
+
+
+class PaginatedFirms(BaseModel):
+    items: list[FirmSummary]
+    total: int
+    page: int
+    page_size: int
 
 
 class SearchQuery(BaseModel):
@@ -121,12 +140,27 @@ class DigestOut(BaseModel):
 
 # ── Alerts ─────────────────────────────────────────────────────────────────────
 
+_SLACK_WEBHOOK_PREFIX = "https://hooks.slack.com/"
+
+
 class AlertCreate(BaseModel):
-    user_id: UUID
     name: str = Field(min_length=1, max_length=200)
     filters: dict[str, Any] = Field(default_factory=dict)
     channel: str = Field(default="email", pattern="^(email|slack)$")
     channel_target: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_channel_target(self) -> "AlertCreate":
+        t = self.channel_target
+        if self.channel == "slack" and t is not None:
+            if not t.startswith(_SLACK_WEBHOOK_PREFIX):
+                raise ValueError(
+                    "channel_target for slack must start with https://hooks.slack.com/"
+                )
+        if self.channel == "email" and t is not None:
+            if "@" not in t or t.startswith("@") or t.endswith("@"):
+                raise ValueError("channel_target for email must be a valid address")
+        return self
 
 
 class AlertOut(BaseModel):
@@ -141,3 +175,4 @@ class AlertOut(BaseModel):
     is_active: bool
     last_fired_at: datetime | None
     fire_count: int
+    created_at: datetime

@@ -4,6 +4,7 @@ import Nav from "./components/Nav";
 import FirmList from "./pages/FirmList";
 import FirmDetail from "./pages/FirmDetail";
 import Ask from "./pages/Ask";
+import Alerts from "./pages/Alerts";
 import Digest from "./pages/Digest";
 
 const queryClient = new QueryClient({
@@ -26,6 +27,7 @@ export default function App() {
               <Route path="/" element={<FirmList />} />
               <Route path="/firms/:id" element={<FirmDetail />} />
               <Route path="/ask" element={<Ask />} />
+              <Route path="/alerts" element={<Alerts />} />
               <Route path="/digest" element={<Digest />} />
             </Routes>
           </main>

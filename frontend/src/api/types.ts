@@ -11,6 +11,7 @@ export interface Firm {
 export interface FirmDetail extends Firm {
   description: string | null;
   website: string | null;
+  employee_count: number | null;
   employees_count: number | null;
   founded_year: number | null;
 }
@@ -20,6 +21,7 @@ export interface Signal {
   firm_id: string;
   signal_type: string;
   title: string;
+  summary: string | null;
   body: string | null;
   score: number;
   occurred_at: string | null;
@@ -34,6 +36,11 @@ export interface FirmTimeline {
   total: number;
   page: number;
   page_size: number;
+}
+
+export interface PaginatedAlerts {
+  items: AlertOut[];
+  total: number;
 }
 
 export interface Citation {

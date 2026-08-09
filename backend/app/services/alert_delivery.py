@@ -8,6 +8,10 @@ Each (alert, signal) pair is recorded in `alert_deliveries` with a unique
 constraint, so re-running the fan-out over an overlapping window never
 sends a duplicate notification.
 
+Delivery records are written BEFORE notifications are dispatched. This ensures
+at-most-once semantics: if the process crashes after the DB write but before
+the HTTP call the record exists and prevents a duplicate send on the next run.
+
 Typical usage:
     stats = await deliver_alerts(session)
 """
@@ -18,7 +22,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,8 +32,8 @@ from app.models.signal import Signal
 
 log = logging.getLogger(__name__)
 
-# Look back this far when no explicit since= is given.
 DEFAULT_LOOKBACK_HOURS = 25
+_SLACK_WEBHOOK_PREFIX = "https://hooks.slack.com/"
 
 
 @dataclass(slots=True)
@@ -49,7 +53,6 @@ class DeliveryStats:
 
 
 def _signal_matches(signal: Signal, filters: dict) -> bool:
-    """Return True when the signal satisfies all non-empty filter keys."""
     firm_ids: list[str] = filters.get("firm_ids") or []
     if firm_ids and str(signal.firm_id) not in firm_ids:
         return False
@@ -97,6 +100,9 @@ async def _send_email(alert: Alert, signals: list[Signal]) -> bool:
     if not settings.notify.resend_api_key:
         log.debug("email delivery skipped: PROPINTEL_NOTIFY__RESEND_API_KEY not set")
         return False
+    if not alert.channel_target:
+        log.warning("email delivery skipped for alert %s: channel_target is null", alert.id)
+        return False
     import httpx
 
     body = _email_body(alert, signals)
@@ -131,6 +137,12 @@ async def _send_slack(alert: Alert, signals: list[Signal]) -> bool:
     if not webhook:
         log.debug("slack delivery skipped: no webhook configured")
         return False
+    if not webhook.startswith(_SLACK_WEBHOOK_PREFIX):
+        log.warning(
+            "slack delivery rejected for alert %s: webhook URL is not a hooks.slack.com address",
+            alert.id,
+        )
+        return False
     import httpx
 
     payload = {"blocks": _slack_blocks(alert, signals)}
@@ -153,12 +165,14 @@ async def deliver_alerts(
 
     Uses PostgreSQL INSERT ... ON CONFLICT DO NOTHING (via the unique constraint
     on alert_deliveries) to guarantee at-most-once delivery per (alert, signal).
+
+    Delivery records are inserted as 'pending' BEFORE the HTTP send, so the
+    record exists in the transaction before any external side-effect occurs.
     """
     stats = DeliveryStats()
     now = datetime.now(UTC)
     lookback_start = since or (now - timedelta(hours=DEFAULT_LOOKBACK_HOURS))
 
-    # New signals since the lookback window.
     new_signals: list[Signal] = list(
         (
             await session.execute(
@@ -169,7 +183,6 @@ async def deliver_alerts(
     if not new_signals:
         return stats
 
-    # Active alerts.
     alerts: list[Alert] = list(
         (await session.execute(select(Alert).where(Alert.is_active.is_(True)))).scalars()
     )
@@ -180,7 +193,6 @@ async def deliver_alerts(
         if not matched:
             continue
 
-        # Determine which (alert, signal) pairs have NOT been delivered yet.
         existing_sig_ids = set(
             (
                 await session.execute(
@@ -199,7 +211,20 @@ async def deliver_alerts(
 
         stats.signals_matched += len(new_matches)
 
-        # Attempt delivery.
+        # Write pending delivery records BEFORE sending any notification.
+        # ON CONFLICT DO NOTHING prevents duplicate records on overlapping runs.
+        for sig in new_matches:
+            stmt = pg_insert(AlertDelivery).values(
+                alert_id=alert.id,
+                signal_id=sig.id,
+                channel=alert.channel,
+                status="pending",
+                attempts=1,
+            ).on_conflict_do_nothing(constraint="uq_alert_delivery")
+            await session.execute(stmt)
+        await session.flush()
+
+        # Now attempt delivery.
         success = False
         try:
             if alert.channel == "email":
@@ -212,18 +237,21 @@ async def deliver_alerts(
             log.error("delivery error for alert %s: %s", alert.id, exc)
             stats.errors += 1
 
-        # Record each (alert, signal) delivery attempt.
+        # Update the pending records with the actual delivery outcome.
         delivery_status = "sent" if success else "failed"
-        for sig in new_matches:
-            stmt = pg_insert(AlertDelivery).values(
-                alert_id=alert.id,
-                signal_id=sig.id,
-                channel=alert.channel,
+        sig_ids = [s.id for s in new_matches]
+        await session.execute(
+            update(AlertDelivery)
+            .where(
+                AlertDelivery.alert_id == alert.id,
+                AlertDelivery.signal_id.in_(sig_ids),
+                AlertDelivery.status == "pending",
+            )
+            .values(
                 status=delivery_status,
                 delivered_at=now if success else None,
-                attempts=1,
-            ).on_conflict_do_nothing(constraint="uq_alert_delivery")
-            await session.execute(stmt)
+            )
+        )
 
         if success:
             alert.last_fired_at = now

@@ -111,8 +111,13 @@ async def run_digest(
     """Build a markdown digest of the past period_days and store it."""
     stats = DigestStats()
     now = as_of or datetime.now(UTC)
-    period_end_dt = now
-    period_start_dt = now - timedelta(days=period_days)
+    # Snap to ISO week boundaries (Monday–Sunday) so daily runs produce a
+    # stable (period_start, period_end) key and the upsert deduplicates them.
+    weekday = now.weekday()  # 0=Monday, 6=Sunday
+    period_start_dt = (now - timedelta(days=weekday)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    period_end_dt = period_start_dt + timedelta(days=period_days)
     period_start_d = period_start_dt.date()
     period_end_d = period_end_dt.date()
 
