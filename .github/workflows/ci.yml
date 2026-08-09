@@ -22,12 +22,29 @@ jobs:
       - uses: actions/checkout@v4
 
       # The ingest package depends on webscraper-core from a sibling checkout.
+      # If the repo is private or unavailable, fall back to the git source.
       - name: Check out webscraper-core
+        id: checkout-webscraper
         uses: actions/checkout@v4
         with:
           repository: areebarshad/WebScraper
           path: ../WebScraper
         continue-on-error: true
+
+      - name: Fall back to git source for webscraper-core
+        if: steps.checkout-webscraper.outcome == 'failure'
+        run: |
+          python3 -c "
+          import re, pathlib
+          p = pathlib.Path('pyproject.toml')
+          content = p.read_text()
+          content = re.sub(
+              r'webscraper-core\s*=\s*\{[^}]+\}',
+              'webscraper-core = { git = \"https://github.com/areebarshad/WebScraper\" }',
+              content
+          )
+          p.write_text(content)
+          "
 
       - uses: astral-sh/setup-uv@v5
         with:
