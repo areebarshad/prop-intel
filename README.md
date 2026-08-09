@@ -1,3 +1,1 @@
 # prop-intel
-
-temp
