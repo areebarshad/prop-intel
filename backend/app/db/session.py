@@ -34,10 +34,11 @@ SessionFactory = async_sessionmaker(
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:
-    """FastAPI dependency. Rolls back on any exception escaping the handler."""
+    """FastAPI dependency. Commits on success, rolls back on any exception."""
     async with SessionFactory() as session:
         try:
             yield session
+            await session.commit()
         except Exception:
             await session.rollback()
             raise

@@ -165,19 +165,6 @@ async def _crawl_sources(
     return stats
 
 
-def _crawl_command(kind: SourceKind | None) -> None:
-    def command(
-        locality: Annotated[str | None, typer.Option()] = None,
-        limit: Annotated[int | None, typer.Option()] = None,
-        dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
-    ) -> None:
-        stats = asyncio.run(_crawl_sources(kind.value if kind else None, locality, limit, dry_run))
-        if not dry_run:
-            typer.secho(str(stats), fg=typer.colors.GREEN)
-
-    return command  # type: ignore[return-value]
-
-
 @app.command("crawl-firms")
 def crawl_firms(
     locality: Annotated[str | None, typer.Option()] = None,
@@ -374,6 +361,7 @@ def extract(
                         )
                         totals["people"] = totals.get("people", 0) + stats.people_added
                         totals["signals"] = totals.get("signals", 0) + stats.signals_created
+                        document.extraction_status = "extracted"
                     elif task_name == "careers" and source.firm_id:
                         stats = await ingest_job_listings(
                             session,
@@ -383,6 +371,7 @@ def extract(
                         )
                         totals["jobs"] = totals.get("jobs", 0) + stats.jobs_added
                         totals["signals"] = totals.get("signals", 0) + stats.signals_created
+                        document.extraction_status = "extracted"
                     elif task_name == "press_release":
                         pstats = await ingest_announcement(
                             session,
@@ -392,8 +381,7 @@ def extract(
                         )
                         totals["projects"] = totals.get("projects", 0) + pstats.created
                         totals["signals"] = totals.get("signals", 0) + pstats.signals_created
-
-                    document.extraction_status = "extracted"
+                        document.extraction_status = "extracted"
 
                 typer.echo(f"  {task_name}: {parsed}/{len(rows)} documents parsed")
 
@@ -432,6 +420,7 @@ def discover_team_pages(
     """
     from webscraper_core.fetchers.base import FetchResult
     from webscraper_core.parsers.registry import get_parser
+    from webscraper_core.utils.robots import RobotsGate
 
     import ingest.register  # noqa: F401
 
@@ -450,13 +439,17 @@ def discover_team_pages(
                 headers={"User-Agent": "PropIntel/0.1"},
             ) as client:
                 for firm in firms:
-                    if not firm.website:
+                    if not firm.is_active or not firm.website:
                         continue
                     base = firm.website.rstrip("/")
+                    gate = RobotsGate(True)
 
                     for path in TEAM_PATHS:
                         url = f"{base}{path}"
+                        if not await gate.allowed(url):
+                            continue
                         try:
+                            await asyncio.sleep(1)
                             response = await client.get(url)
                         except Exception:  # noqa: BLE001
                             continue
@@ -671,8 +664,6 @@ def deliver_alerts(
     async def _run() -> None:
         async with session_scope() as session:
             if dry_run:
-                from datetime import timedelta
-
                 from app.models.alert import Alert
 
                 active = await session.scalar(

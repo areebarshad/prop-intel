@@ -18,6 +18,8 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy import select
@@ -29,6 +31,9 @@ from app.models.source import Source
 from ingest.documents.pdf import extract_pages
 
 log = logging.getLogger(__name__)
+
+# RobotsGate instances cached per netloc so robots.txt is not re-fetched on every request.
+_robots_gates: dict[str, Any] = {}
 
 # Below this, the "document" is a 404 page, a login wall, or an empty JS shell.
 # Storing them costs nothing but pollutes the corpus and wastes an extraction.
@@ -56,7 +61,6 @@ CHALLENGE_MARKERS = (
     "attention required! | cloudflare",
     "please enable cookies",
     "request unsuccessful. incapsula",
-    "access denied",
     "why have i been blocked",
 )
 
@@ -213,14 +217,13 @@ async def persist_document(
         fetched_at=datetime.now(UTC),
         extraction_status=ExtractionStatus.PENDING.value,
     )
-    session.add(document)
-
     try:
-        await session.flush()
+        async with session.begin_nested():
+            session.add(document)
+            await session.flush()
     except Exception as exc:  # noqa: BLE001
         # Almost certainly the unique constraint losing a concurrency race.
-        # Treat as a duplicate rather than failing the batch.
-        await session.rollback()
+        # The savepoint rolls back only this document; the batch transaction survives.
         log.info("could not store %s, treating as duplicate: %s", url, exc)
         return IngestResult(url=url, outcome=FetchOutcome.DUPLICATE, content_hash=digest)
 
@@ -312,8 +315,15 @@ async def fetch_and_ingest(
     """
     from webscraper_core.utils.robots import RobotsGate
 
-    gate = RobotsGate(True)
-    if not await gate.allowed(url):
+    netloc = urlparse(url).netloc
+    if netloc not in _robots_gates:
+        _robots_gates[netloc] = RobotsGate(True)
+    gate = _robots_gates[netloc]
+
+    allowed = await gate.allowed(url)
+    source.robots_allowed = allowed
+    source.robots_checked_at = datetime.now(UTC)
+    if not allowed:
         log.info("robots.txt disallows %s", url)
         return IngestResult(url=url, outcome=FetchOutcome.ROBOTS_DENIED)
 
@@ -329,24 +339,34 @@ async def fetch_and_ingest(
 
     try:
         try:
-            response = await client.get(url)
-            response.raise_for_status()
+            async with client.stream("GET", url) as response:
+                response.raise_for_status()
+                cl = response.headers.get("content-length")
+                if cl and int(cl) > MAX_DOCUMENT_BYTES:
+                    return IngestResult(
+                        url=url,
+                        outcome=FetchOutcome.FAILED,
+                        error=f"document exceeds {MAX_DOCUMENT_BYTES} bytes",
+                    )
+                raw_bytes = bytearray()
+                async for chunk in response.aiter_bytes():
+                    raw_bytes.extend(chunk)
+                    if len(raw_bytes) > MAX_DOCUMENT_BYTES:
+                        return IngestResult(
+                            url=url,
+                            outcome=FetchOutcome.FAILED,
+                            error=f"document exceeds {MAX_DOCUMENT_BYTES} bytes",
+                        )
+                media_type = response.headers.get("content-type", "").split(";")[0].strip()
+                encoding = response.charset_encoding or "utf-8"
+                final_url = str(response.url)
+                status = response.status_code
 
-            if len(response.content) > MAX_DOCUMENT_BYTES:
-                return IngestResult(
-                    url=url,
-                    outcome=FetchOutcome.FAILED,
-                    error=f"document exceeds {MAX_DOCUMENT_BYTES} bytes",
-                )
-
-            media_type = response.headers.get("content-type", "").split(";")[0].strip()
             if media_type == "application/pdf" or url.lower().endswith(".pdf"):
                 # A PDF has no DOM to hydrate; the browser path would add nothing.
-                return await ingest_pdf(session, source=source, url=url, data=response.content)
+                return await ingest_pdf(session, source=source, url=url, data=bytes(raw_bytes))
 
-            html = response.text
-            final_url = str(response.url)
-            status = response.status_code
+            html = raw_bytes.decode(encoding, errors="replace")
         except Exception as exc:  # noqa: BLE001
             if not (allow_dynamic and _is_bot_block(exc)):
                 log.warning("fetch failed for %s: %s", url, exc)

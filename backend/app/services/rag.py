@@ -16,7 +16,6 @@ from __future__ import annotations
 import logging
 import textwrap
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import select
@@ -24,9 +23,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.document import DocumentChunk, RawDocument
-
-if TYPE_CHECKING:
-    pass
 
 log = logging.getLogger(__name__)
 

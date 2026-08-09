@@ -230,6 +230,7 @@ async def _upsert_source(
     scrape_task: str | None = None,
     config: dict[str, Any] | None = None,
     notes: str | None = None,
+    is_active: bool = True,
 ) -> Source:
     existing = (
         await session.execute(select(Source).where(Source.base_url == base_url))
@@ -244,6 +245,7 @@ async def _upsert_source(
         "scrape_task": scrape_task,
         "config": config or {},
         "notes": notes,
+        "is_active": is_active,
     }
 
     if existing is None:
@@ -355,6 +357,7 @@ async def seed_sources(
                 **({"adapter": row["adapter"]} if row.get("adapter") else {}),
             },
             notes=row.get("notes"),
+            is_active=row.get("verified", True),
             stats=stats,
         )
 
