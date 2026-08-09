@@ -179,7 +179,12 @@ class TeamParser(BaseParser):
         raw_tree = HTMLParser(res.html)
         tree = strip_noise(HTMLParser(res.html))
 
-        members = self._from_jsonld(raw_tree) or self._from_structure(tree)
+        # Bug 37: filter JSON-LD results to those with a job title so that bare
+        # Person entries (article authors, bylines) don't suppress the structural
+        # team pass, which is the authoritative roster source for most sites.
+        jsonld_members = self._from_jsonld(raw_tree)
+        valid_jsonld = [m for m in jsonld_members if m.job_title]
+        members = valid_jsonld or self._from_structure(tree)
         if not members:
             return None
 
@@ -197,7 +202,12 @@ class TeamParser(BaseParser):
         """
         if not extractor.enabled:
             return None
-        return None
+        return await extractor.extract(
+            res,
+            TeamRoster,
+            "Extract all team members and leadership from this company page. "
+            "For each person include name, job title, email, and LinkedIn URL.",
+        )
 
     @staticmethod
     def _from_jsonld(tree: HTMLParser) -> list[TeamMember]:

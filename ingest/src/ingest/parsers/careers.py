@@ -12,7 +12,7 @@ posting that vanishes is how a role gets closed.
 from __future__ import annotations
 
 import re
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from selectolax.parser import HTMLParser, Node
 from webscraper_core.fetchers.base import FetchResult
@@ -61,7 +61,10 @@ ROLE_MARKERS = (
 )
 
 # Link targets typical of applicant tracking systems.
-ATS_HOSTS = (
+# Bug 35: split into netloc-based (actual ATS domains) and path-based patterns.
+# Checking bare strings like "careers"/"jobs" against the full URL causes false
+# positives when the base URL itself contains /careers/.
+ATS_NETLOC_HOSTS = (
     "greenhouse.io",
     "lever.co",
     "workday",
@@ -79,6 +82,8 @@ ATS_HOSTS = (
     "careers",
     "jobs",
 )
+
+ATS_PATH_PARTS = ("careers", "jobs", "recruiting", "openings", "apply")
 
 LOCATION_RE = re.compile(r"\b([A-Z][A-Za-z.\- ]+),\s*(VA|MD|DC|Virginia|Maryland)\b")
 
@@ -105,7 +110,15 @@ class CareersParser(BaseParser):
         raw_tree = HTMLParser(res.html)
         tree = strip_noise(HTMLParser(res.html))
 
-        listings = self._from_jsonld(raw_tree) or self._from_links(tree, res.final_url)
+        # Bug 37: merge both passes so a single JSON-LD JobPosting (e.g. a
+        # "featured role" embed) doesn't suppress the full structural listing.
+        jsonld_listings = self._from_jsonld(raw_tree)
+        link_listings = self._from_links(tree, res.final_url)
+        seen_titles = {j.job_title.lower() for j in jsonld_listings}
+        listings = list(jsonld_listings)
+        for listing in link_listings:
+            if listing.job_title.lower() not in seen_titles:
+                listings.append(listing)
         if not listings:
             return None
 
@@ -118,7 +131,12 @@ class CareersParser(BaseParser):
     async def llm_fallback(self, res: FetchResult, extractor: LLMExtractor) -> CareersPage | None:
         if not extractor.enabled:
             return None
-        return None
+        return await extractor.extract(
+            res,
+            CareersPage,
+            "Extract all job listings from this careers page. "
+            "For each listing include job title, location, and employment type.",
+        )
 
     @staticmethod
     def _from_jsonld(tree: HTMLParser) -> list[JobListing]:
@@ -167,9 +185,15 @@ class CareersParser(BaseParser):
 
             href = anchor.attributes.get("href") or ""
             absolute = urljoin(base_url, href)
-            # A role-shaped link that goes nowhere job-related is usually a
-            # service page ("Property Management"), not a posting.
-            if not any(host in absolute.lower() for host in ATS_HOSTS):
+            # Bug 35: check ATS domains against netloc only; check path patterns
+            # against the raw href so the base URL path cannot cause false matches.
+            parsed = urlparse(absolute)
+            netloc = parsed.netloc.lower()
+            href_lower = href.lower()
+            if not (
+                any(h in netloc for h in ATS_NETLOC_HOSTS)
+                or any(p in href_lower for p in ATS_PATH_PARTS)
+            ):
                 continue
 
             key = text.lower()

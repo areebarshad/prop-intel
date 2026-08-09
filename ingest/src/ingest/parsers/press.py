@@ -89,6 +89,28 @@ SQFT_RE = re.compile(
 ACRES_RE = re.compile(r"\b([\d,]+(?:\.\d+)?)\s*(?:-|\s)?acres?\b", re.I)
 MONEY_RE = re.compile(r"\$\s?([\d,]+(?:\.\d+)?)\s*(million|billion|M|B)?\b", re.I)
 
+# Bug 38: patterns for extracting firm names and project names from article text.
+FIRM_RE = re.compile(
+    r"\b([A-Z][A-Za-z0-9&\s]{1,40}"
+    r"(?:Development|Realty|Properties|Property Group|Capital|Partners|REIT|"
+    r"Investments?|Management|Construction|Builders?|Associates|Real Estate|"
+    r"Residential|Commercial))"
+    r"(?=[\s,\.\)])",
+)
+PROJECT_NAME_RE = re.compile(
+    r'["“‘]([A-Z][^"”’\n]{4,79})["”’]'
+    r"|\bthe\s+([A-Z][A-Za-z\s]{3,39})\s+"
+    r"(?:development|project|tower|center|district|community|phase)\b",
+    re.I,
+)
+
+# Bug 41: context words used to score numeric match relevance.
+_NUMERIC_CONTEXT_WORDS = (
+    "development", "project", "building", "tower", "community",
+    "acquired", "develop", "deliver", "construct", "announce",
+    "residential", "commercial", "mixed-use", "multifamily",
+)
+
 MIN_ARTICLE_CHARS = 250
 
 
@@ -115,10 +137,38 @@ def detect_asset_class(text: str) -> str | None:
 
 
 def detect_locality(text: str) -> str | None:
+    # Bug 40: return the locality that appears earliest in the text rather than
+    # the one listed first in VA_LOCALITIES (declaration order is arbitrary).
+    best: tuple[int, str] | None = None
     for locality in VA_LOCALITIES:
-        if re.search(rf"\b{re.escape(locality)}\b", text):
-            return locality
-    return None
+        m = re.search(rf"\b{re.escape(locality)}\b", text)
+        if m and (best is None or m.start() < best[0]):
+            best = (m.start(), locality)
+    return best[1] if best else None
+
+
+def _best_numeric_match(pattern: re.Pattern[str], text: str) -> re.Match[str] | None:
+    """Bug 41: return match with the most development-related context words nearby.
+
+    Index-0 grabs are unreliable when boilerplate (e.g. sidebar stats, ad copy)
+    appears before the article body. Scoring by surrounding context words prefers
+    the match that sits inside a development sentence.
+    """
+    matches = list(pattern.finditer(text))
+    if not matches:
+        return None
+    if len(matches) == 1:
+        return matches[0]
+
+    def _score(m: re.Match[str]) -> int:
+        start = max(0, m.start() - 200)
+        end = min(len(text), m.end() + 200)
+        snippet = text[start:end].lower()
+        return sum(1 for w in _NUMERIC_CONTEXT_WORDS if w in snippet)
+
+    # Highest context score wins; ties broken by latest position (article body
+    # follows sidebars/boilerplate in HTML reading order).
+    return max(matches, key=lambda m: (_score(m), m.start()))
 
 
 def parse_money(text: str) -> float | None:
@@ -166,13 +216,17 @@ class PressReleaseParser(BaseParser):
         if not headline:
             return None
 
-        units = UNITS_RE.search(text)
-        sqft = SQFT_RE.search(text)
-        acres = ACRES_RE.search(text)
+        # Bug 41: use context-scored match selection instead of index-0.
+        units = _best_numeric_match(UNITS_RE, text)
+        sqft = _best_numeric_match(SQFT_RE, text)
+        acres = _best_numeric_match(ACRES_RE, text)
 
         return ProjectAnnouncement(
             source_url=res.final_url,
             headline=headline,
+            # Bug 38: populate project_name and firm_names from article text.
+            project_name=self._extract_project_name(headline, text),
+            firm_names=self._extract_firm_names(text),
             project_type=detect_asset_class(text),
             locality=detect_locality(text),
             unit_count=_to_int(units.group(1)) if units else None,
@@ -188,6 +242,35 @@ class PressReleaseParser(BaseParser):
     ) -> ProjectAnnouncement | None:
         if not extractor.enabled:
             return None
+        return await extractor.extract(
+            res,
+            ProjectAnnouncement,
+            "Extract real estate project announcement details from this press release "
+            "or news article. Include headline, project name, firm names, project type, "
+            "locality, unit count, square footage, acreage, and estimated value in USD.",
+        )
+
+    @staticmethod
+    def _extract_firm_names(text: str) -> list[str]:
+        """Bug 38: firm names ending with a real-estate company suffix."""
+        seen: set[str] = set()
+        firms: list[str] = []
+        for m in FIRM_RE.finditer(text):
+            name = " ".join(m.group(1).split())
+            key = name.lower()
+            if key not in seen:
+                seen.add(key)
+                firms.append(name)
+        return firms[:5]
+
+    @staticmethod
+    def _extract_project_name(headline: str, text: str) -> str | None:
+        """Bug 38: quoted project name or '[Name] development/project/...' pattern."""
+        for source in (headline, text[:1200]):
+            for m in PROJECT_NAME_RE.finditer(source):
+                name = (m.group(1) or m.group(2) or "").strip()
+                if 4 < len(name) < 80:
+                    return " ".join(name.split())
         return None
 
     @staticmethod
