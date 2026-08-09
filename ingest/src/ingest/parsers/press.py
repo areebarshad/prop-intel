@@ -106,9 +106,20 @@ PROJECT_NAME_RE = re.compile(
 
 # Bug 41: context words used to score numeric match relevance.
 _NUMERIC_CONTEXT_WORDS = (
-    "development", "project", "building", "tower", "community",
-    "acquired", "develop", "deliver", "construct", "announce",
-    "residential", "commercial", "mixed-use", "multifamily",
+    "development",
+    "project",
+    "building",
+    "tower",
+    "community",
+    "acquired",
+    "develop",
+    "deliver",
+    "construct",
+    "announce",
+    "residential",
+    "commercial",
+    "mixed-use",
+    "multifamily",
 )
 
 MIN_ARTICLE_CHARS = 250

@@ -19,9 +19,7 @@ class TestCreateKey:
 
         assert resp.status_code == 201
 
-    async def test_create_key_response_schema(
-        self, authed_client: AsyncClient, db_mock: AsyncMock
-    ):
+    async def test_create_key_response_schema(self, authed_client: AsyncClient, db_mock: AsyncMock):
         resp = await authed_client.post("/api/v1/keys", json={"name": "schema-test"})
 
         assert resp.status_code == 201
@@ -116,9 +114,7 @@ class TestListKeys:
         assert isinstance(resp.json(), list)
         assert len(resp.json()) == 2
 
-    async def test_list_keys_empty(
-        self, authed_client: AsyncClient, db_mock: AsyncMock
-    ):
+    async def test_list_keys_empty(self, authed_client: AsyncClient, db_mock: AsyncMock):
         result = MagicMock()
         result.scalars.return_value = iter([])
         db_mock.execute.return_value = result

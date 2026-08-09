@@ -32,12 +32,14 @@ log = logging.getLogger(__name__)
 
 # Outcomes that should propagate as errors to mark_source_crawled. Any outcome
 # not in this set (STORED, DUPLICATE, SCANNED_PDF) is considered non-critical.
-_BAD_OUTCOMES = frozenset({
-    FetchOutcome.FAILED,
-    FetchOutcome.BOT_CHALLENGE,
-    FetchOutcome.ROBOTS_DENIED,
-    FetchOutcome.TOO_SHORT,
-})
+_BAD_OUTCOMES = frozenset(
+    {
+        FetchOutcome.FAILED,
+        FetchOutcome.BOT_CHALLENGE,
+        FetchOutcome.ROBOTS_DENIED,
+        FetchOutcome.TOO_SHORT,
+    }
+)
 
 
 def extract_links(html: str, base_url: str, pattern: str = "") -> list[str]:

@@ -10,8 +10,13 @@ help:  ## Show this help
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: install
-install:  ## Sync the uv workspace with dev dependencies
+install:  ## Sync the uv workspace with dev dependencies and install git hooks
 	uv sync --all-packages --dev
+	uv run pre-commit install
+
+.PHONY: hooks
+hooks:  ## Install git pre-commit hooks (run once per clone)
+	uv run pre-commit install
 
 .PHONY: up
 up:  ## Start Postgres (pgvector)

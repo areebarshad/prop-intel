@@ -580,7 +580,9 @@ def enrich_permits(
 
                 unlinked = (
                     await session.scalar(
-                        select(func.count()).select_from(Permit).where(
+                        select(func.count())
+                        .select_from(Permit)
+                        .where(
                             Permit.firm_id.is_(None),
                             Permit.parcel_id.is_not(None),
                             Permit.locality == locality,
@@ -591,9 +593,7 @@ def enrich_permits(
                 return
 
             resolver = EntityResolver(await load_firm_records(session))
-            stats = await enrich_permits_with_parcel_owners(
-                session, resolver, locality=locality
-            )
+            stats = await enrich_permits_with_parcel_owners(session, resolver, locality=locality)
             typer.secho(str(stats), fg=typer.colors.GREEN)
 
     asyncio.run(_run())
