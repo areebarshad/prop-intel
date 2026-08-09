@@ -18,7 +18,7 @@ Environment = Literal["development", "staging", "production", "test"]
 
 
 class LLMSettings(BaseSettings):
-    """Two-tier Claude routing.
+    """Two-tier local LLM routing via Ollama (OpenAI-compatible API).
 
     ``smart_model`` handles RAG answers, digest narrative, and any summarization
     where a wrong-but-fluent answer would be costly. ``fast_model`` handles the
@@ -29,9 +29,10 @@ class LLMSettings(BaseSettings):
     string, so swapping a model is a one-line config change.
     """
 
-    api_key: SecretStr | None = None
-    smart_model: str = "claude-sonnet-5"
-    fast_model: str = "claude-haiku-4-5"
+    base_url: str = "http://localhost:11434/v1"
+    api_key: SecretStr | None = SecretStr("ollama")
+    smart_model: str = "qwen2.5:14b"
+    fast_model: str = "qwen2.5:14b"
 
     max_tokens: int = 4096
     # Extraction runs over whole documents; cap the text we send so a 200-page
@@ -48,7 +49,7 @@ class LLMSettings(BaseSettings):
 
     @property
     def is_configured(self) -> bool:
-        return self.enabled and self.api_key is not None
+        return self.enabled
 
 
 class EmbeddingSettings(BaseSettings):

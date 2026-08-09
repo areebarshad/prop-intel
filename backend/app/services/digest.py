@@ -89,19 +89,20 @@ async def _firm_narrative(firm_name: str, signals: list[Signal]) -> str:
         lines = [f"- {_format_signal(s)}" for s in sorted_sigs[:10]]
         return "\n".join(lines)
 
-    from anthropic import AsyncAnthropic
+    from openai import AsyncOpenAI
 
-    client = AsyncAnthropic(
-        api_key=settings.llm.api_key.get_secret_value(),  # type: ignore[union-attr]
+    client = AsyncOpenAI(
+        base_url=settings.llm.base_url,
+        api_key=settings.llm.api_key.get_secret_value() if settings.llm.api_key else "ollama",  # type: ignore[union-attr]
         timeout=settings.llm.timeout_seconds,
         max_retries=settings.llm.max_retries,
     )
-    response = await client.messages.create(
+    response = await client.chat.completions.create(
         model=settings.llm.smart_model,
         max_tokens=512,
         messages=[{"role": "user", "content": prompt}],
     )
-    return response.content[0].text if response.content else signal_list
+    return response.choices[0].message.content or signal_list
 
 
 async def run_digest(

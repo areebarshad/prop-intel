@@ -154,10 +154,11 @@ async def ask(
             passages_found=len(rows),
         )
 
-    from anthropic import AsyncAnthropic
+    from openai import AsyncOpenAI
 
-    client = AsyncAnthropic(
-        api_key=settings.llm.api_key.get_secret_value(),  # type: ignore[union-attr]
+    client = AsyncOpenAI(
+        base_url=settings.llm.base_url,
+        api_key=settings.llm.api_key.get_secret_value() if settings.llm.api_key else "ollama",  # type: ignore[union-attr]
         timeout=settings.llm.timeout_seconds,
         max_retries=settings.llm.max_retries,
     )
@@ -168,13 +169,15 @@ async def ask(
     )
 
     try:
-        response = await client.messages.create(
+        response = await client.chat.completions.create(
             model=settings.llm.smart_model,
             max_tokens=settings.llm.max_tokens,
-            system=_RAG_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
+            messages=[
+                {"role": "system", "content": _RAG_SYSTEM_PROMPT},
+                {"role": "user", "content": user_message},
+            ],
         )
-        answer_text = response.content[0].text if response.content else "No response generated."
+        answer_text = response.choices[0].message.content or "No response generated."
     except Exception as exc:  # noqa: BLE001
         log.warning("RAG LLM call failed: %s", exc)
         answer_text = (
