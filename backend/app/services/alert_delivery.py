@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -52,7 +53,7 @@ class DeliveryStats:
         )
 
 
-def _signal_matches(signal: Signal, filters: dict) -> bool:
+def _signal_matches(signal: Signal, filters: dict[str, Any]) -> bool:
     firm_ids: list[str] = filters.get("firm_ids") or []
     if firm_ids and str(signal.firm_id) not in firm_ids:
         return False
@@ -86,7 +87,7 @@ def _email_body(alert: Alert, signals: list[Signal]) -> str:
     return "\n".join(lines)
 
 
-def _slack_blocks(alert: Alert, signals: list[Signal]) -> list[dict]:
+def _slack_blocks(alert: Alert, signals: list[Signal]) -> list[dict[str, Any]]:
     text = f"*PropIntel — {alert.name}*\n"
     for sig in signals[:5]:
         date_str = sig.occurred_at.strftime("%b %-d") if sig.occurred_at else "recent"

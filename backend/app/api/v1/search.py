@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -35,7 +37,7 @@ async def _has_firm_embeddings(db: AsyncSession) -> bool:
 
 
 @router.post("", response_model=SearchResult)
-async def search_firms(body: SearchQuery, db: AsyncSession = Depends(get_db)) -> dict:
+async def search_firms(body: SearchQuery, db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
     """Search firms by keyword or semantic similarity.
 
     If embeddings are populated (``firms.embedding IS NOT NULL``), runs a
@@ -44,15 +46,15 @@ async def search_firms(body: SearchQuery, db: AsyncSession = Depends(get_db)) ->
     """
     has_embeddings = await _has_firm_embeddings(db)
 
-    base_filter = [Firm.is_active.is_(True)]
+    base_filter: list[ColumnElement[bool]] = [Firm.is_active.is_(True)]
     if body.asset_classes:
         from sqlalchemy import or_
 
-        base_filter.append(or_(*[Firm.asset_classes.any(ac) for ac in body.asset_classes]))
+        base_filter.append(or_(*[Firm.asset_classes.any(ac) for ac in body.asset_classes]))  # type: ignore[arg-type]
     if body.localities:
         from sqlalchemy import or_
 
-        base_filter.append(or_(*[Firm.localities.any(loc) for loc in body.localities]))
+        base_filter.append(or_(*[Firm.localities.any(loc) for loc in body.localities]))  # type: ignore[arg-type]
 
     if has_embeddings:
         from app.services.embedding import async_embed
@@ -65,7 +67,7 @@ async def search_firms(body: SearchQuery, db: AsyncSession = Depends(get_db)) ->
         # pgvector cosine distance (<=>); lower = more similar (0=identical, 2=opposite)
         # Drop results with distance > 0.5 (cosine similarity < 0.5) as irrelevant.
         _SIMILARITY_DISTANCE_THRESHOLD = 0.5
-        dist_expr = Firm.embedding.cosine_distance(vector)  # type: ignore[attr-defined]
+        dist_expr = Firm.embedding.cosine_distance(vector)
         query = (
             select(Firm)
             .where(*base_filter, dist_expr <= _SIMILARITY_DISTANCE_THRESHOLD)

@@ -13,7 +13,7 @@ carousels, and article bylines out of the roster.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, cast
 
 from selectolax.parser import HTMLParser, Node
 from webscraper_core.fetchers.base import FetchResult
@@ -202,11 +202,14 @@ class TeamParser(BaseParser):
         """
         if not extractor.enabled:
             return None
-        return await extractor.extract(
-            res,
+        return cast(
             TeamRoster,
-            "Extract all team members and leadership from this company page. "
-            "For each person include name, job title, email, and LinkedIn URL.",
+            await extractor.extract(
+                res,
+                TeamRoster,
+                "Extract all team members and leadership from this company page. "
+                "For each person include name, job title, email, and LinkedIn URL.",
+            ),
         )
 
     @staticmethod

@@ -37,7 +37,7 @@ class FirmDetail(FirmSummary):
     founded_year: int | None
     embedding_updated_at: datetime | None
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def employees_count(self) -> int | None:
         return self.employee_count
@@ -59,7 +59,7 @@ class SignalOut(BaseModel):
     payload: dict[str, Any]
     is_derived: bool
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def body(self) -> str | None:
         return self.summary

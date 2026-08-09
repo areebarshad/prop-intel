@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -25,7 +26,7 @@ async def list_firms(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     query = select(Firm).where(Firm.is_active.is_(True))
     if q:
         pattern = f"%{q}%"
@@ -33,9 +34,9 @@ async def list_firms(
     if firm_type:
         query = query.where(Firm.firm_type == firm_type)
     if asset_class:
-        query = query.where(Firm.asset_classes.any(asset_class))
+        query = query.where(Firm.asset_classes.any(asset_class))  # type: ignore[arg-type]
     if locality:
-        query = query.where(Firm.localities.any(locality))
+        query = query.where(Firm.localities.any(locality))  # type: ignore[arg-type]
 
     total = (await db.scalar(select(func.count()).select_from(query.subquery()))) or 0
     offset = (page - 1) * page_size
@@ -60,7 +61,7 @@ async def firm_timeline(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     firm = await db.get(Firm, firm_id)
     if firm is None:
         raise HTTPException(status_code=404, detail="firm not found")

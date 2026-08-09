@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,7 +20,7 @@ async def ask_question(
     body: AskQuery,
     current_user: User = Depends(rate_limited_user),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     """Answer a natural-language question using the PropIntel document corpus.
 
     Returns a grounded answer (sourced from crawled documents) plus citations

@@ -21,7 +21,7 @@ def _no_result() -> MagicMock:
     return result
 
 
-def _existing_result(user) -> MagicMock:
+def _existing_result(user: object) -> MagicMock:
     """scalar_one_or_none() returns an existing user."""
     result = MagicMock()
     result.scalar_one_or_none.return_value = user
@@ -29,7 +29,7 @@ def _existing_result(user) -> MagicMock:
 
 
 class TestRegister:
-    async def test_register_returns_201_and_token(self, client: AsyncClient, db_mock: AsyncMock):
+    async def test_register_returns_201_and_token(self, client: AsyncClient, db_mock: AsyncMock) -> None:
         db_mock.execute.return_value = _no_result()
 
         resp = await client.post(
@@ -43,7 +43,7 @@ class TestRegister:
         assert isinstance(body["access_token"], str) and len(body["access_token"]) > 20
         assert "user_id" in body
 
-    async def test_register_response_schema(self, client: AsyncClient, db_mock: AsyncMock):
+    async def test_register_response_schema(self, client: AsyncClient, db_mock: AsyncMock) -> None:
         db_mock.execute.return_value = _no_result()
 
         resp = await client.post(
@@ -62,7 +62,7 @@ class TestRegister:
 
     async def test_duplicate_email_via_preflight_check_returns_409(
         self, client: AsyncClient, db_mock: AsyncMock
-    ):
+    ) -> None:
         existing = _make_user(email="dup@example.com")
         db_mock.execute.return_value = _existing_result(existing)
 
@@ -76,7 +76,7 @@ class TestRegister:
 
     async def test_duplicate_email_via_integrity_error_returns_409(
         self, client: AsyncClient, db_mock: AsyncMock
-    ):
+    ) -> None:
         db_mock.execute.return_value = _no_result()
         db_mock.flush.side_effect = IntegrityError("", {}, Exception())
 
@@ -89,7 +89,7 @@ class TestRegister:
 
     async def test_password_over_72_bytes_is_handled_gracefully(
         self, client: AsyncClient, db_mock: AsyncMock
-    ):
+    ) -> None:
         """bcrypt silently truncates at 72 bytes; prehash (SHA-256) removes this risk."""
         db_mock.execute.return_value = _no_result()
         long_password = "x" * 100  # 100 bytes > bcrypt's 72-byte limit; schema allows up to 128
@@ -101,7 +101,7 @@ class TestRegister:
 
         assert resp.status_code == 201
 
-    async def test_password_too_short_returns_422(self, client: AsyncClient, db_mock: AsyncMock):
+    async def test_password_too_short_returns_422(self, client: AsyncClient, db_mock: AsyncMock) -> None:
         db_mock.execute.return_value = _no_result()
 
         resp = await client.post(
@@ -111,7 +111,7 @@ class TestRegister:
 
         assert resp.status_code == 422
 
-    async def test_invalid_email_returns_422(self, client: AsyncClient, db_mock: AsyncMock):
+    async def test_invalid_email_returns_422(self, client: AsyncClient, db_mock: AsyncMock) -> None:
         resp = await client.post(
             "/api/v1/auth/register",
             json={"email": "not-an-email", "password": "securepw5"},
@@ -122,7 +122,7 @@ class TestRegister:
 class TestLogin:
     async def test_login_success_returns_200_and_token(
         self, client: AsyncClient, db_mock: AsyncMock
-    ):
+    ) -> None:
         password = "correct-horse"
         user = _make_user(
             email="login@example.com",
@@ -143,7 +143,7 @@ class TestLogin:
         assert isinstance(body["access_token"], str)
         assert body["user_id"] == str(user.id)
 
-    async def test_login_wrong_password_returns_401(self, client: AsyncClient, db_mock: AsyncMock):
+    async def test_login_wrong_password_returns_401(self, client: AsyncClient, db_mock: AsyncMock) -> None:
         user = _make_user(
             email="login2@example.com",
             hashed_password=_hash_password("right-password"),
@@ -161,7 +161,7 @@ class TestLogin:
 
     async def test_login_nonexistent_user_returns_401(
         self, client: AsyncClient, db_mock: AsyncMock
-    ):
+    ) -> None:
         db_mock.execute.return_value = _no_result()
 
         resp = await client.post(
@@ -171,7 +171,7 @@ class TestLogin:
 
         assert resp.status_code == 401
 
-    async def test_login_inactive_user_returns_403(self, client: AsyncClient, db_mock: AsyncMock):
+    async def test_login_inactive_user_returns_403(self, client: AsyncClient, db_mock: AsyncMock) -> None:
         user = _make_user(
             email="inactive@example.com",
             hashed_password=_hash_password("pw123456"),

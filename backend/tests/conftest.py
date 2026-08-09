@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -17,7 +18,7 @@ from app.db.session import get_db
 from app.main import app
 
 
-def _make_user(**kwargs) -> SimpleNamespace:
+def _make_user(**kwargs: Any) -> SimpleNamespace:
     """Lightweight stand-in for a User ORM instance; works with Pydantic from_attributes."""
     defaults = dict(
         id=uuid.uuid4(),
@@ -36,7 +37,7 @@ def _make_user(**kwargs) -> SimpleNamespace:
     return SimpleNamespace(**defaults)
 
 
-def _make_api_key(user_id: uuid.UUID, **kwargs) -> SimpleNamespace:
+def _make_api_key(user_id: uuid.UUID, **kwargs: Any) -> SimpleNamespace:
     """Lightweight stand-in for an ApiKey ORM instance."""
     defaults = dict(
         id=uuid.uuid4(),
@@ -58,7 +59,7 @@ def _make_api_key(user_id: uuid.UUID, **kwargs) -> SimpleNamespace:
 def _db_mock() -> AsyncMock:
     """Async session mock that populates SA-model defaults via __dict__ on add()."""
 
-    def _add(obj):
+    def _add(obj: object) -> None:
         # Bypass SQLAlchemy attribute instrumentation so we can set server-side
         # defaults that a real flush would populate but a mock flush won't.
         d = obj.__dict__ if hasattr(obj, "__dict__") else {}
@@ -91,10 +92,10 @@ def fixture_user() -> SimpleNamespace:
 async def client(db_mock: AsyncMock) -> AsyncIterator[AsyncClient]:
     """AsyncClient with DB and rate-limit deps overridden."""
 
-    async def _get_db():
+    async def _get_db() -> AsyncGenerator[AsyncMock, None]:
         yield db_mock
 
-    async def _no_rate_limit():
+    async def _no_rate_limit() -> None:
         return None
 
     app.dependency_overrides[get_db] = _get_db
@@ -111,13 +112,13 @@ async def authed_client(
 ) -> AsyncIterator[AsyncClient]:
     """AsyncClient with DB, rate-limit, and auth deps overridden."""
 
-    async def _get_db():
+    async def _get_db() -> AsyncGenerator[AsyncMock, None]:
         yield db_mock
 
-    async def _no_rate_limit():
+    async def _no_rate_limit() -> None:
         return None
 
-    async def _get_user():
+    async def _get_user() -> SimpleNamespace:
         return fixture_user
 
     app.dependency_overrides[get_db] = _get_db

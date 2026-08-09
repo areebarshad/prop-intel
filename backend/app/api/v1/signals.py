@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, nullslast, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,7 +26,7 @@ async def list_signals(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     base = select(Signal).where(Signal.score >= min_score)
 
     if firm_id:

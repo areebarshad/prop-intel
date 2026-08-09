@@ -95,7 +95,7 @@ async def _firm_narrative(firm_name: str, signals: list[Signal]) -> str:
 
     client = AsyncOpenAI(
         base_url=settings.llm.base_url,
-        api_key=settings.llm.api_key.get_secret_value() if settings.llm.api_key else "ollama",  # type: ignore[union-attr]
+        api_key=settings.llm.api_key.get_secret_value() if settings.llm.api_key else "ollama",
         timeout=settings.llm.timeout_seconds,
         max_retries=settings.llm.max_retries,
     )

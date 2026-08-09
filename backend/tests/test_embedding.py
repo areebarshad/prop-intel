@@ -34,8 +34,8 @@ def test_chunk_text_overlap() -> None:
     chunks = chunk_text(text)
     # Consecutive chunks should share words (overlap)
     if len(chunks) >= 2:
-        words_a = set(chunks[0]["text"].split())
-        words_b = set(chunks[1]["text"].split())
+        words_a = set(str(chunks[0]["text"]).split())
+        words_b = set(str(chunks[1]["text"]).split())
         assert words_a & words_b, "consecutive chunks should overlap"
 
 

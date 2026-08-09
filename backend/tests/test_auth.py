@@ -9,29 +9,29 @@ from app.core.config import settings
 
 
 class TestPasswordHashing:
-    def test_hash_is_not_plaintext(self):
+    def test_hash_is_not_plaintext(self) -> None:
         pw = "hunter2!"
         h = _hash_password(pw)
         assert h != pw
 
-    def test_verify_correct(self):
+    def test_verify_correct(self) -> None:
         pw = "correct-horse-battery"
         assert _verify_password(pw, _hash_password(pw))
 
-    def test_verify_wrong(self):
+    def test_verify_wrong(self) -> None:
         assert not _verify_password("wrong", _hash_password("right"))
 
-    def test_different_hashes_for_same_password(self):
+    def test_different_hashes_for_same_password(self) -> None:
         pw = "samepass"
         assert _hash_password(pw) != _hash_password(pw)
 
 
 class TestJWTIssuance:
-    def test_token_is_string(self):
+    def test_token_is_string(self) -> None:
         tok = _issue_token("user-123")
         assert isinstance(tok, str)
 
-    def test_token_decodes_correctly(self):
+    def test_token_decodes_correctly(self) -> None:
         tok = _issue_token("user-abc")
         payload = jwt.decode(
             tok,
@@ -40,7 +40,7 @@ class TestJWTIssuance:
         )
         assert payload["sub"] == "user-abc"
 
-    def test_token_has_exp(self):
+    def test_token_has_exp(self) -> None:
         tok = _issue_token("user-abc")
         payload = jwt.decode(
             tok,
@@ -50,7 +50,7 @@ class TestJWTIssuance:
         assert "exp" in payload
         assert payload["exp"] > payload["iat"]
 
-    def test_token_expiry_matches_ttl(self):
+    def test_token_expiry_matches_ttl(self) -> None:
         tok = _issue_token("u")
         payload = jwt.decode(
             tok,
@@ -63,11 +63,11 @@ class TestJWTIssuance:
 
 
 class TestSecuritySettings:
-    def test_algorithm_is_hs256(self):
+    def test_algorithm_is_hs256(self) -> None:
         assert settings.security.algorithm == "HS256"
 
-    def test_api_key_prefix(self):
+    def test_api_key_prefix(self) -> None:
         assert settings.security.api_key_prefix == "pk_"
 
-    def test_ttl_positive(self):
+    def test_ttl_positive(self) -> None:
         assert settings.security.access_token_ttl_minutes > 0

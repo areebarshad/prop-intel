@@ -12,6 +12,7 @@ posting that vanishes is how a role gets closed.
 from __future__ import annotations
 
 import re
+from typing import cast
 from urllib.parse import urljoin, urlparse
 
 from selectolax.parser import HTMLParser, Node
@@ -131,11 +132,14 @@ class CareersParser(BaseParser):
     async def llm_fallback(self, res: FetchResult, extractor: LLMExtractor) -> CareersPage | None:
         if not extractor.enabled:
             return None
-        return await extractor.extract(
-            res,
+        return cast(
             CareersPage,
-            "Extract all job listings from this careers page. "
-            "For each listing include job title, location, and employment type.",
+            await extractor.extract(
+                res,
+                CareersPage,
+                "Extract all job listings from this careers page. "
+                "For each listing include job title, location, and employment type.",
+            ),
         )
 
     @staticmethod

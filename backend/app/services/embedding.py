@@ -21,7 +21,8 @@ import re
 import textwrap
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+from uuid import UUID
 
 import numpy as np
 from sqlalchemy import exists as sa_exists
@@ -52,13 +53,16 @@ def _get_model() -> SentenceTransformer:
 
 def _embed(texts: list[str]) -> list[list[float]]:
     model = _get_model()
-    vectors: np.ndarray = model.encode(
-        texts,
-        batch_size=settings.embedding.batch_size,
-        normalize_embeddings=True,
-        show_progress_bar=False,
+    vectors: np.ndarray = cast(
+        np.ndarray,
+        model.encode(
+            texts,
+            batch_size=settings.embedding.batch_size,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        ),
     )
-    return vectors.tolist()
+    return cast(list[list[float]], vectors.tolist())
 
 
 async def async_embed(texts: list[str]) -> list[list[float]]:
@@ -222,7 +226,7 @@ async def embed_pending_documents(
                 stats.skipped += 1
                 continue
 
-            texts = [c["text"] for c in raw_chunks]  # type: ignore[index]
+            texts = cast(list[str], [c["text"] for c in raw_chunks])
             vectors = await async_embed(texts)
 
             new_chunks: list[DocumentChunk] = []
@@ -231,9 +235,9 @@ async def embed_pending_documents(
                     document_id=doc.id,
                     firm_id=None,  # populated by _backfill_chunk_firm_ids below
                     chunk_index=idx,
-                    page_number=chunk_data.get("page_number"),  # type: ignore[arg-type]
-                    text=chunk_data["text"],  # type: ignore[index]
-                    token_count=chunk_data.get("token_count"),  # type: ignore[arg-type]
+                    page_number=chunk_data.get("page_number"),
+                    text=chunk_data["text"],
+                    token_count=chunk_data.get("token_count"),
                     embedding=vector,
                 )
                 session.add(chunk)
@@ -265,7 +269,7 @@ async def embed_pending_documents(
     return stats
 
 
-async def _backfill_chunk_firm_ids(session: AsyncSession, chunk_ids: list[int]) -> None:
+async def _backfill_chunk_firm_ids(session: AsyncSession, chunk_ids: list[UUID]) -> None:
     """Set firm_id on newly-created chunks whose parent document has a firm-specific source."""
     from sqlalchemy import update
 

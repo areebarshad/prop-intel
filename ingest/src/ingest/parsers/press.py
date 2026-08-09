@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
+from typing import cast
 
 from selectolax.parser import HTMLParser
 from webscraper_core.fetchers.base import FetchResult
@@ -253,12 +254,15 @@ class PressReleaseParser(BaseParser):
     ) -> ProjectAnnouncement | None:
         if not extractor.enabled:
             return None
-        return await extractor.extract(
-            res,
+        return cast(
             ProjectAnnouncement,
-            "Extract real estate project announcement details from this press release "
-            "or news article. Include headline, project name, firm names, project type, "
-            "locality, unit count, square footage, acreage, and estimated value in USD.",
+            await extractor.extract(
+                res,
+                ProjectAnnouncement,
+                "Extract real estate project announcement details from this press release "
+                "or news article. Include headline, project name, firm names, project type, "
+                "locality, unit count, square footage, acreage, and estimated value in USD.",
+            ),
         )
 
     @staticmethod

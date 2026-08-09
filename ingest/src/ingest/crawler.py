@@ -157,7 +157,7 @@ async def crawl_source(
         return stats
 
     raw_pattern = str(source.config.get("link_pattern", ""))
-    max_links = int(source.config.get("max_links", 50))
+    max_links = int(str(source.config.get("max_links", 50)))
     discovered = extract_links(html, source.base_url, raw_pattern)[:max_links]
 
     if not discovered:

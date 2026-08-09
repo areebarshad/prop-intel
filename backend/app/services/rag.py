@@ -76,12 +76,12 @@ async def retrieve(
         select(
             DocumentChunk,
             RawDocument,
-            DocumentChunk.embedding.cosine_distance(query_vector).label("distance"),  # type: ignore[attr-defined]
+            DocumentChunk.embedding.cosine_distance(query_vector).label("distance"),
         )
         .join(RawDocument, RawDocument.id == DocumentChunk.document_id)
         .where(
             DocumentChunk.embedding.is_not(None),
-            DocumentChunk.embedding.cosine_distance(query_vector) <= max_distance,  # type: ignore[attr-defined]
+            DocumentChunk.embedding.cosine_distance(query_vector) <= max_distance,
         )
     )
     if firm_id is not None:
@@ -158,7 +158,7 @@ async def ask(
 
     client = AsyncOpenAI(
         base_url=settings.llm.base_url,
-        api_key=settings.llm.api_key.get_secret_value() if settings.llm.api_key else "ollama",  # type: ignore[union-attr]
+        api_key=settings.llm.api_key.get_secret_value() if settings.llm.api_key else "ollama",
         timeout=settings.llm.timeout_seconds,
         max_retries=settings.llm.max_retries,
     )

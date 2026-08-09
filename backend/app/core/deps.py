@@ -43,7 +43,7 @@ def _hash_key(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-async def _get_redis():
+async def _get_redis() -> object | None:
     global _redis_client, _redis_init_done
     if _redis_init_done:
         return _redis_client
@@ -51,7 +51,7 @@ async def _get_redis():
     if not settings.redis_url:
         return None
     try:
-        import redis.asyncio as aioredis  # type: ignore[import-not-found]
+        import redis.asyncio as aioredis
 
         _redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
     except Exception as exc:
@@ -89,7 +89,7 @@ async def _check_rate_limit(uid: str, limit: int) -> None:
     if redis is not None:
         key = f"rl:{uid}"
         try:
-            result = await redis.eval(_LUA_RATE_LIMIT, 1, key, now, 60, limit, 65)
+            result = await redis.eval(_LUA_RATE_LIMIT, 1, key, now, 60, limit, 65)  # type: ignore[attr-defined]
             if result == 0:
                 raise HTTPException(status_code=429, detail="rate limit exceeded")
             return
