@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import pytest
-
+from app.models.enums import SignalType
 from app.services.digest import (
     DIGEST_PERIOD_DAYS,
     DIGEST_SCORE_FLOOR,
     DigestStats,
     _format_signal,
 )
-from app.models.enums import SignalType
 
 
 class _FakeSig:

@@ -47,9 +47,11 @@ async def search_firms(body: SearchQuery, db: AsyncSession = Depends(get_db)) ->
     base_filter = [Firm.is_active.is_(True)]
     if body.asset_classes:
         from sqlalchemy import or_
+
         base_filter.append(or_(*[Firm.asset_classes.any(ac) for ac in body.asset_classes]))
     if body.localities:
         from sqlalchemy import or_
+
         base_filter.append(or_(*[Firm.localities.any(loc) for loc in body.localities]))
 
     if has_embeddings:

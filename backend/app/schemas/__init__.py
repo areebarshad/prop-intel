@@ -102,6 +102,7 @@ class PaginatedSignals(BaseModel):
 
 # ── RAG ────────────────────────────────────────────────────────────────────────
 
+
 class AskQuery(BaseModel):
     q: str = Field(min_length=1, max_length=1000)
     firm_id: UUID | None = None
@@ -123,6 +124,7 @@ class AskAnswer(BaseModel):
 
 
 # ── Digest ─────────────────────────────────────────────────────────────────────
+
 
 class DigestOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -150,7 +152,7 @@ class AlertCreate(BaseModel):
     channel_target: str | None = None
 
     @model_validator(mode="after")
-    def _validate_channel_target(self) -> "AlertCreate":
+    def _validate_channel_target(self) -> AlertCreate:
         t = self.channel_target
         if self.channel == "slack" and t is not None:
             if not t.startswith(_SLACK_WEBHOOK_PREFIX):
@@ -179,6 +181,7 @@ class AlertOut(BaseModel):
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
+
 
 class RegisterRequest(BaseModel):
     email: EmailStr
@@ -214,6 +217,7 @@ class UserOut(BaseModel):
 
 # ── API Keys ───────────────────────────────────────────────────────────────────
 
+
 class ApiKeyCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
 
@@ -232,4 +236,5 @@ class ApiKeyOut(BaseModel):
 
 class ApiKeyCreated(ApiKeyOut):
     """Returned only at creation — the plaintext key is not stored."""
+
     key: str

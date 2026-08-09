@@ -34,8 +34,7 @@ log = logging.getLogger(__name__)
 # Verify this URL before the first run:
 #   uv run propintel-ingest verify-seeds --kind open_data_api
 FAIRFAX_PARCEL_SERVICE_URL = (
-    "https://www.fairfaxcounty.gov/maps/rest/services/PropertyInfo/"
-    "FeatureServer"
+    "https://www.fairfaxcounty.gov/maps/rest/services/PropertyInfo/FeatureServer"
 )
 FAIRFAX_PARCEL_LAYER_ID = 0
 # Field names in the Fairfax parcel layer — confirm against the layer schema
@@ -50,8 +49,8 @@ class ParcelEnrichStats:
     parcel_ids_fetched: int = 0
     permits_attributed: int = 0
     permits_queued: int = 0
-    permits_no_owner: int = 0      # no row in the parcel service
-    permits_unresolved: int = 0    # owner row found but resolver returned unmatched/ambiguous
+    permits_no_owner: int = 0  # no row in the parcel service
+    permits_unresolved: int = 0  # owner row found but resolver returned unmatched/ambiguous
     errors: int = 0
 
     def __str__(self) -> str:
@@ -170,9 +169,7 @@ async def enrich_permits_with_parcel_owners(
                 owner_field=owner_field,
             )
         except Exception as exc:
-            log.error(
-                "parcel owner fetch failed for batch at index %d: %s", batch_start, exc
-            )
+            log.error("parcel owner fetch failed for batch at index %d: %s", batch_start, exc)
             stats.errors += len(parcel_ids)
             continue
 
@@ -214,9 +211,7 @@ async def enrich_permits_with_parcel_owners(
                 # the timeline and digest reflect the now-known developer.
                 dedupe_key = f"permit:{permit.locality}:{permit.permit_number}"
                 existing_signal = (
-                    await session.execute(
-                        select(Signal).where(Signal.dedupe_key == dedupe_key)
-                    )
+                    await session.execute(select(Signal).where(Signal.dedupe_key == dedupe_key))
                 ).scalar_one_or_none()
                 if existing_signal is not None and existing_signal.firm_id is None:
                     existing_signal.firm_id = UUID(outcome.firm_id)

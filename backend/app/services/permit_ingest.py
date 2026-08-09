@@ -71,9 +71,9 @@ async def load_firm_records(session: AsyncSession) -> list[FirmRecord]:
     parcel_rows = list(
         (
             await session.execute(
-                select(Permit.firm_id, Permit.parcel_id).where(
-                    Permit.firm_id.is_not(None), Permit.parcel_id.is_not(None)
-                ).distinct()
+                select(Permit.firm_id, Permit.parcel_id)
+                .where(Permit.firm_id.is_not(None), Permit.parcel_id.is_not(None))
+                .distinct()
             )
         ).all()
     )

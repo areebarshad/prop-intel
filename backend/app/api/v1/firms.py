@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.models.firm import Firm
 from app.models.signal import Signal
-from app.schemas import FirmDetail, FirmSummary, FirmTimeline, PaginatedFirms
+from app.schemas import FirmDetail, FirmTimeline, PaginatedFirms
 
 router = APIRouter(prefix="/firms", tags=["firms"])
 
@@ -77,10 +77,7 @@ async def firm_timeline(
         signals_query = signals_query.where(Signal.signal_type.in_(signal_types))
     offset = (page - 1) * page_size
     signals_query = (
-        signals_query
-        .order_by(nullslast(Signal.occurred_at.desc()))
-        .limit(page_size)
-        .offset(offset)
+        signals_query.order_by(nullslast(Signal.occurred_at.desc())).limit(page_size).offset(offset)
     )
     signals = list((await db.execute(signals_query)).scalars())
 

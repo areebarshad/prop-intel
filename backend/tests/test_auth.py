@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import jwt
 
+from app.api.v1.auth import _hash_password, _issue_token, _verify_password
 from app.core.config import settings
-from app.api.v1.auth import _hash_password, _verify_password, _issue_token
 
 
 class TestPasswordHashing:

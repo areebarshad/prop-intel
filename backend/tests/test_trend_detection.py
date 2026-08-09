@@ -11,10 +11,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.services.trend_detection import (
+    PIVOT_BASELINE_THRESHOLD,
+    PIVOT_NEW_SHARE_THRESHOLD,
     _derive_asset_class_mix,
     _window_dedupe_key,
-    PIVOT_NEW_SHARE_THRESHOLD,
-    PIVOT_BASELINE_THRESHOLD,
 )
 
 

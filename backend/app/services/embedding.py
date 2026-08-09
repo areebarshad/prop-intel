@@ -195,10 +195,12 @@ async def embed_pending_documents(
     query = (
         select(RawDocument)
         .where(
-            RawDocument.extraction_status.in_([
-                ExtractionStatus.PENDING.value,
-                ExtractionStatus.EXTRACTED.value,
-            ]),
+            RawDocument.extraction_status.in_(
+                [
+                    ExtractionStatus.PENDING.value,
+                    ExtractionStatus.EXTRACTED.value,
+                ]
+            ),
             RawDocument.cleaned_text.is_not(None),
             RawDocument.extraction_attempts < 3,
             no_chunks,
@@ -263,10 +265,8 @@ async def embed_pending_documents(
     return stats
 
 
-async def _backfill_chunk_firm_ids(
-    session: AsyncSession, chunk_ids: list[int]
-) -> None:
-    """Set firm_id on the given newly-created chunks whose parent document has a firm-specific source."""
+async def _backfill_chunk_firm_ids(session: AsyncSession, chunk_ids: list[int]) -> None:
+    """Set firm_id on newly-created chunks whose parent document has a firm-specific source."""
     from sqlalchemy import update
 
     from app.models.source import Source

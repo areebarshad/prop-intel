@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import uuid
-import pytest
 
-from app.services.alert_delivery import DEFAULT_LOOKBACK_HOURS, DeliveryStats, _signal_matches
 from app.models.enums import SignalType
+from app.services.alert_delivery import DEFAULT_LOOKBACK_HOURS, DeliveryStats, _signal_matches
 
 
 class _FakeSig:

@@ -27,10 +27,7 @@ class TestGenerateKey:
 
     def test_hash_is_deterministic(self):
         raw, _, _ = _generate_key()
-        assert (
-            hashlib.sha256(raw.encode()).hexdigest()
-            == hashlib.sha256(raw.encode()).hexdigest()
-        )
+        assert hashlib.sha256(raw.encode()).hexdigest() == hashlib.sha256(raw.encode()).hexdigest()
 
     def test_raw_key_length_reasonable(self):
         raw, _, _ = _generate_key()

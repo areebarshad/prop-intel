@@ -175,9 +175,7 @@ async def deliver_alerts(
 
     new_signals: list[Signal] = list(
         (
-            await session.execute(
-                select(Signal).where(Signal.detected_at >= lookback_start)
-            )
+            await session.execute(select(Signal).where(Signal.detected_at >= lookback_start))
         ).scalars()
     )
     if not new_signals:
@@ -214,13 +212,17 @@ async def deliver_alerts(
         # Write pending delivery records BEFORE sending any notification.
         # ON CONFLICT DO NOTHING prevents duplicate records on overlapping runs.
         for sig in new_matches:
-            stmt = pg_insert(AlertDelivery).values(
-                alert_id=alert.id,
-                signal_id=sig.id,
-                channel=alert.channel,
-                status="pending",
-                attempts=1,
-            ).on_conflict_do_nothing(constraint="uq_alert_delivery")
+            stmt = (
+                pg_insert(AlertDelivery)
+                .values(
+                    alert_id=alert.id,
+                    signal_id=sig.id,
+                    channel=alert.channel,
+                    status="pending",
+                    attempts=1,
+                )
+                .on_conflict_do_nothing(constraint="uq_alert_delivery")
+            )
             await session.execute(stmt)
         await session.flush()
 

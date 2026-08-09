@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from rapidfuzz import fuzz, process
 
@@ -35,8 +35,6 @@ from app.services.naming import (
     normalize_address,
     normalize_phone,
 )
-
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -343,7 +341,7 @@ class EntityResolver:
     @classmethod
     async def fetch_trgm_candidates(
         cls,
-        session: "AsyncSession",
+        session: AsyncSession,
         canonical_mention: str,
         *,
         limit: int = MAX_CANDIDATES,
@@ -370,9 +368,7 @@ class EntityResolver:
                         func.similarity(Firm.canonical_name, canonical_mention)
                         > similarity_threshold
                     )
-                    .order_by(
-                        func.similarity(Firm.canonical_name, canonical_mention).desc()
-                    )
+                    .order_by(func.similarity(Firm.canonical_name, canonical_mention).desc())
                     .limit(limit)
                 )
             ).scalars()

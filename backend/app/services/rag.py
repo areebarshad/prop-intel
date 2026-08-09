@@ -163,10 +163,7 @@ async def ask(
         max_retries=settings.llm.max_retries,
     )
 
-    user_message = (
-        f"Here are the relevant document passages:\n\n{context}\n\n"
-        f"Question: {question}"
-    )
+    user_message = f"Here are the relevant document passages:\n\n{context}\n\nQuestion: {question}"
 
     try:
         response = await client.chat.completions.create(

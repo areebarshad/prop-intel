@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
-
 from app.services.rag import (
-    MAX_CONTEXT_CHARS,
     DEFAULT_MIN_SIMILARITY,
     DEFAULT_TOP_K,
+    MAX_CONTEXT_CHARS,
     Citation,
     RagAnswer,
 )

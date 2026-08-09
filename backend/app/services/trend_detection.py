@@ -42,11 +42,11 @@ log = logging.getLogger(__name__)
 # Thresholds
 HIRING_SURGE_MULTIPLIER = 1.5
 HIRING_SURGE_MIN_JOBS = 5
-PIVOT_NEW_SHARE_THRESHOLD = 0.30   # 30% of permits in window
-PIVOT_BASELINE_THRESHOLD = 0.10    # was under 10% in prior windows
+PIVOT_NEW_SHARE_THRESHOLD = 0.30  # 30% of permits in window
+PIVOT_BASELINE_THRESHOLD = 0.10  # was under 10% in prior windows
 ANOMALY_ZSCORE_THRESHOLD = 2.0
 WINDOW_DAYS = 90
-BASELINE_WINDOWS = 4               # how many prior windows to compare against
+BASELINE_WINDOWS = 4  # how many prior windows to compare against
 
 
 @dataclass(slots=True)
@@ -96,10 +96,10 @@ async def _compute_window(
         (
             await session.execute(
                 select(
-                        Permit.permit_type,
-                        func.count().label("cnt"),
-                        func.sum(Permit.valuation_usd).label("val"),
-                    )
+                    Permit.permit_type,
+                    func.count().label("cnt"),
+                    func.sum(Permit.valuation_usd).label("val"),
+                )
                 .where(*permit_where)
                 .group_by(Permit.permit_type)
             )
@@ -115,7 +115,9 @@ async def _compute_window(
     # Open job count during window: posted before window end and not yet closed
     open_jobs = (
         await session.scalar(
-            select(func.count()).select_from(JobPosting).where(
+            select(func.count())
+            .select_from(JobPosting)
+            .where(
                 JobPosting.firm_id == firm_id,
                 JobPosting.first_seen_at <= period_end,
                 or_(
@@ -129,7 +131,9 @@ async def _compute_window(
     # News/signal mention count
     signal_count = (
         await session.scalar(
-            select(func.count()).select_from(Signal).where(
+            select(func.count())
+            .select_from(Signal)
+            .where(
                 Signal.firm_id == firm_id,
                 Signal.occurred_at >= period_start,
                 Signal.occurred_at < period_end,
@@ -157,9 +161,7 @@ async def _compute_window(
     # Upsert TrendWindow — use is_(None) explicitly for NULL locality so the
     # WHERE clause compiles to IS NULL rather than = NULL.
     locality_filter = (
-        TrendWindow.locality.is_(None)
-        if locality is None
-        else TrendWindow.locality == locality
+        TrendWindow.locality.is_(None) if locality is None else TrendWindow.locality == locality
     )
     existing = (
         await session.execute(
@@ -237,9 +239,7 @@ async def _emit_derived_signal(
 ) -> bool:
     """Insert a derived signal; return True if new, False if duplicate."""
     existing = (
-        await session.execute(
-            select(Signal.id).where(Signal.dedupe_key == dedupe_key)
-        )
+        await session.execute(select(Signal.id).where(Signal.dedupe_key == dedupe_key))
     ).scalar_one_or_none()
 
     if existing is not None:
@@ -366,7 +366,9 @@ async def _detect_geographic_expansion(
     current_localities = set(
         (
             await session.execute(
-                select(Permit.locality).distinct().where(
+                select(Permit.locality)
+                .distinct()
+                .where(
                     Permit.firm_id == firm.id,
                     Permit.locality.is_not(None),
                     Permit.filed_date >= period_start.date(),
@@ -380,7 +382,9 @@ async def _detect_geographic_expansion(
     prior_localities = set(
         (
             await session.execute(
-                select(Permit.locality).distinct().where(
+                select(Permit.locality)
+                .distinct()
+                .where(
                     Permit.firm_id == firm.id,
                     Permit.locality.is_not(None),
                     or_(
@@ -488,9 +492,7 @@ async def run_trend_detection(
 
     for firm in firms:
         # Compute current window
-        current = await _compute_window(
-            session, firm.id, firm.county, period_start, period_end
-        )
+        current = await _compute_window(session, firm.id, firm.county, period_start, period_end)
         stats.windows_computed += 1
 
         # Compute discrete non-overlapping baseline windows (no shared days
@@ -499,9 +501,7 @@ async def run_trend_detection(
         for i in range(1, BASELINE_WINDOWS + 1):
             bl_end = period_start - timedelta(days=window_days * (i - 1))
             bl_start = bl_end - timedelta(days=window_days)
-            bl_window = await _compute_window(
-                session, firm.id, firm.county, bl_start, bl_end
-            )
+            bl_window = await _compute_window(session, firm.id, firm.county, bl_start, bl_end)
             baseline.append(bl_window)
             stats.windows_computed += 1
 

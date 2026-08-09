@@ -6,9 +6,7 @@ sentence-transformers is not imported unless explicitly tested.
 
 from __future__ import annotations
 
-import pytest
-
-from app.services.embedding import _rough_token_count, chunk_text, chunk_document
+from app.services.embedding import _rough_token_count, chunk_document, chunk_text
 
 
 def test_rough_token_count_basic() -> None:

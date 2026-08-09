@@ -12,7 +12,6 @@ survive restarts and apply correctly across multiple workers.
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 from datetime import UTC, datetime
 
@@ -48,6 +47,7 @@ async def _get_redis():
         return None
     try:
         import redis.asyncio as aioredis  # type: ignore[import-not-found]
+
         _redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
     except Exception as exc:
         log.warning("redis init failed, falling back to in-memory rate limiting: %s", exc)
@@ -126,10 +126,10 @@ async def _resolve_user_from_jwt(token: str, db: AsyncSession) -> User:
             algorithms=[settings.security.algorithm],
         )
         user_id: str = payload["sub"]
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="token expired")
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token")
+    except jwt.ExpiredSignatureError as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="token expired") from e
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token") from e
 
     user = await db.get(User, user_id)
     if user is None or not user.is_active:

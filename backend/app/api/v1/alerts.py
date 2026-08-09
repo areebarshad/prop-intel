@@ -22,11 +22,7 @@ async def list_alerts(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[Alert]:
-    return list(
-        (
-            await db.execute(select(Alert).where(Alert.user_id == current_user.id))
-        ).scalars()
-    )
+    return list((await db.execute(select(Alert).where(Alert.user_id == current_user.id))).scalars())
 
 
 @router.post("", response_model=AlertOut, status_code=201)

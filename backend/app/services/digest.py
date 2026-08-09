@@ -17,10 +17,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-import httpx
 
 from app.core.config import settings
 from app.models.alert import Digest
@@ -35,12 +34,14 @@ DIGEST_SCORE_FLOOR = 0.5
 DIGEST_PERIOD_DAYS = 7
 
 # Signal types that represent synthesis and should be featured first.
-_LEAD_TYPES = frozenset({
-    SignalType.HIRING_SURGE,
-    SignalType.ASSET_CLASS_PIVOT,
-    SignalType.GEOGRAPHIC_EXPANSION,
-    SignalType.PERMIT_VOLUME_ANOMALY,
-})
+_LEAD_TYPES = frozenset(
+    {
+        SignalType.HIRING_SURGE,
+        SignalType.ASSET_CLASS_PIVOT,
+        SignalType.GEOGRAPHIC_EXPANSION,
+        SignalType.PERMIT_VOLUME_ANOMALY,
+    }
+)
 
 _FIRM_PROMPT_TEMPLATE = """\
 You are writing a section of a weekly intelligence digest for Virginia \
@@ -155,18 +156,14 @@ async def run_digest(
     firm_ids = list(by_firm.keys())
     firms = {
         str(f.id): f
-        for f in (
-            await session.execute(select(Firm).where(Firm.id.in_(firm_ids)))
-        ).scalars()
+        for f in (await session.execute(select(Firm).where(Firm.id.in_(firm_ids)))).scalars()
     }
 
     # Generate narrative per firm.
     sections: list[str] = []
     all_signal_ids: list[str] = []
 
-    for firm_id, firm_sigs in sorted(
-        by_firm.items(), key=lambda kv: -max(s.score for s in kv[1])
-    ):
+    for firm_id, firm_sigs in sorted(by_firm.items(), key=lambda kv: -max(s.score for s in kv[1])):
         firm = firms.get(str(firm_id))
         if firm is None:
             continue
@@ -188,10 +185,7 @@ async def run_digest(
         return stats
 
     period_label = f"{period_start_d.strftime('%B %-d')}–{period_end_d.strftime('%B %-d, %Y')}"
-    markdown = (
-        f"# PropIntel Weekly Digest — {period_label}\n\n"
-        + "\n\n---\n\n".join(sections)
-    )
+    markdown = f"# PropIntel Weekly Digest — {period_label}\n\n" + "\n\n---\n\n".join(sections)
 
     # Upsert: one digest per period window.
     existing = (
@@ -233,10 +227,7 @@ class DigestDeliveryStats:
     errors: int = 0
 
     def __str__(self) -> str:
-        return (
-            f"{self.sent}/{self.recipients} sent, "
-            f"{self.skipped} skipped, {self.errors} errors"
-        )
+        return f"{self.sent}/{self.recipients} sent, {self.skipped} skipped, {self.errors} errors"
 
 
 async def deliver_digest(
@@ -249,7 +240,6 @@ async def deliver_digest(
     Requires PROPINTEL_NOTIFY__RESEND_API_KEY.  Skips gracefully when not
     configured so the command is safe to run in development.
     """
-    from sqlalchemy.orm import selectinload
 
     stats = DigestDeliveryStats()
 
@@ -262,9 +252,7 @@ async def deliver_digest(
         digest = await session.get(Digest, digest_id)
     else:
         digest = (
-            await session.execute(
-                select(Digest).order_by(Digest.period_start.desc()).limit(1)
-            )
+            await session.execute(select(Digest).order_by(Digest.period_start.desc()).limit(1))
         ).scalar_one_or_none()
 
     if digest is None:
@@ -273,16 +261,15 @@ async def deliver_digest(
 
     # Load all active users with an email address.
     users: list[User] = list(
-        (
-            await session.execute(
-                select(User).where(User.is_active.is_(True))
-            )
-        ).scalars()
+        (await session.execute(select(User).where(User.is_active.is_(True)))).scalars()
     )
     stats.recipients = len(users)
 
     subject = digest.title or f"PropIntel Weekly Digest — {digest.period_start}"
-    html_body = f"<pre style='font-family:monospace;white-space:pre-wrap'>{html.escape(digest.markdown)}</pre>"
+    html_body = (
+        "<pre style='font-family:monospace;white-space:pre-wrap'>"
+        f"{html.escape(digest.markdown)}</pre>"
+    )
 
     api_key = settings.notify.resend_api_key.get_secret_value()
     async with httpx.AsyncClient(timeout=15.0) as client:
@@ -299,7 +286,9 @@ async def deliver_digest(
                     },
                 )
                 if resp.status_code >= 400:
-                    log.warning("resend error %s for %s: %s", resp.status_code, user.email, resp.text[:200])
+                    log.warning(
+                        "resend error %s for %s: %s", resp.status_code, user.email, resp.text[:200]
+                    )
                     stats.errors += 1
                 else:
                     stats.sent += 1

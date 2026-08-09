@@ -67,4 +67,4 @@ jobs:
         run: cd frontend && npm ci
 
       - name: Type-check
-        run: cd frontend && npx tsc --noEmit
+        run: cd frontend && npx tsc -b --noEmit
