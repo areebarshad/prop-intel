@@ -68,10 +68,11 @@ def test_chunk_document_pdf_with_page_markers() -> None:
 
     doc = MagicMock()
     doc.cleaned_text = (
+        "<!-- page:1 -->\n\n"
         "First page content here.\n\n"
-        "--- Page 2 ---\n\n"
+        "<!-- page:2 -->\n\n"
         "Second page content here.\n\n"
-        "--- Page 3 ---\n\n"
+        "<!-- page:3 -->\n\n"
         "Third page content here."
     )
     doc.page_count = 3

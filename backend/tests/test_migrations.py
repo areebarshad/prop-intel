@@ -59,7 +59,10 @@ def _parse(sql: str) -> tuple[dict[str, list[str]], set[str]]:
     indexes: set[str] = set()
 
     for raw in sql.split(";"):
-        statement = re.sub(r"\s+", " ", raw.strip())
+        # Strip SQL line comments before collapsing whitespace so that Alembic's
+        # "-- Running upgrade …" header doesn't swallow the following statement.
+        stripped = re.sub(r"--[^\n]*", "", raw).strip()
+        statement = re.sub(r"\s+", " ", stripped)
         if not statement:
             continue
 
@@ -69,6 +72,14 @@ def _parse(sql: str) -> tuple[dict[str, list[str]], set[str]]:
             if name == "alembic_version":  # Alembic's own bookkeeping
                 continue
             tables[name] = sorted(_split_top_level(table_match.group(2)))
+            continue
+
+        add_col_match = re.match(r"ALTER TABLE (\w+) ADD COLUMN (.+)$", statement)
+        if add_col_match:
+            name = add_col_match.group(1)
+            col_def = add_col_match.group(2).strip()
+            if name in tables:
+                tables[name] = sorted(tables[name] + [col_def])
             continue
 
         if re.match(r"CREATE (?:UNIQUE )?INDEX ", statement):

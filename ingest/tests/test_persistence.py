@@ -180,7 +180,7 @@ class TestBotChallengeDetection:
             "DDoS protection by Cloudflare",
             "Please enable cookies to continue",
             "Request unsuccessful. Incapsula incident id",
-            "Access denied — you do not have permission to access this resource",
+            "Why have I been blocked from accessing this site",
         ],
     )
     def test_detects_challenge_interstitials(self, text: str) -> None:
