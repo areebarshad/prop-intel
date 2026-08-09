@@ -83,7 +83,7 @@ def db_mock() -> AsyncMock:
 
 
 @pytest.fixture
-def fixture_user() -> User:
+def fixture_user() -> SimpleNamespace:
     return _make_user()
 
 
@@ -106,7 +106,9 @@ async def client(db_mock: AsyncMock) -> AsyncIterator[AsyncClient]:
 
 
 @pytest_asyncio.fixture
-async def authed_client(db_mock: AsyncMock, fixture_user: User) -> AsyncIterator[AsyncClient]:
+async def authed_client(
+    db_mock: AsyncMock, fixture_user: SimpleNamespace
+) -> AsyncIterator[AsyncClient]:
     """AsyncClient with DB, rate-limit, and auth deps overridden."""
 
     async def _get_db():

@@ -5,10 +5,7 @@ No network calls — link extraction is pure HTML parsing.
 
 from __future__ import annotations
 
-import pytest
-
 from ingest.crawler import extract_links
-
 
 BASE = "https://virginiabusiness.com/category/real-estate/"
 

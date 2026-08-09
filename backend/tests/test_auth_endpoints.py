@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from sqlalchemy.exc import IntegrityError
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-import pytest_asyncio
 from httpx import AsyncClient
+from sqlalchemy.exc import IntegrityError
+from tests.conftest import _make_user
 
 from app.api.v1.auth import _hash_password
-from tests.conftest import _make_user
 
 pytestmark = pytest.mark.asyncio
 

@@ -22,9 +22,9 @@ from typing import Any
 import httpx
 
 from ingest.apis.base import (
+    VALID_MAPPED_ATTRS,
     OpenDataAdapter,
     PermitRecord,
-    VALID_MAPPED_ATTRS,
     epoch_millis_to_date,
     to_float,
 )

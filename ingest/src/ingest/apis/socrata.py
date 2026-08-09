@@ -14,7 +14,13 @@ from typing import Any
 
 import httpx
 
-from ingest.apis.base import OpenDataAdapter, PermitRecord, VALID_MAPPED_ATTRS, parse_iso_date, to_float
+from ingest.apis.base import (
+    VALID_MAPPED_ATTRS,
+    OpenDataAdapter,
+    PermitRecord,
+    parse_iso_date,
+    to_float,
+)
 
 log = logging.getLogger(__name__)
 

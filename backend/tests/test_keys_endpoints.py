@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from httpx import AsyncClient
-
 from tests.conftest import _make_api_key
 
 pytestmark = pytest.mark.asyncio
