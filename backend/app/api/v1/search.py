@@ -60,11 +60,14 @@ async def search_firms(body: SearchQuery, db: AsyncSession = Depends(get_db)) ->
         except Exception as exc:
             raise HTTPException(status_code=503, detail=f"embedding unavailable: {exc}") from exc
 
-        # pgvector cosine distance (<=>); lower = more similar
+        # pgvector cosine distance (<=>); lower = more similar (0=identical, 2=opposite)
+        # Drop results with distance > 0.5 (cosine similarity < 0.5) as irrelevant.
+        _SIMILARITY_DISTANCE_THRESHOLD = 0.5
+        dist_expr = Firm.embedding.cosine_distance(vector)  # type: ignore[attr-defined]
         query = (
             select(Firm)
-            .where(*base_filter)
-            .order_by(Firm.embedding.cosine_distance(vector))  # type: ignore[attr-defined]
+            .where(*base_filter, dist_expr <= _SIMILARITY_DISTANCE_THRESHOLD)
+            .order_by(dist_expr)
             .limit(body.limit)
         )
         firms = list((await db.execute(query)).scalars())

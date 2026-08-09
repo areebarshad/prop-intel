@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import textwrap
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -111,43 +112,47 @@ def chunk_text(text: str, page_number: int | None = None) -> list[dict[str, obje
     return chunks
 
 
+_PAGE_MARKER = re.compile(r"<!--\s*page:(\d+)\s*-->")
+
+
+def _split_by_page_marker(markdown: str) -> list[tuple[int, str]]:
+    """Split PDF markdown on ``<!-- page:N -->`` markers emitted by pdf.py."""
+    matches = list(_PAGE_MARKER.finditer(markdown))
+    if not matches:
+        return [(1, markdown.strip())] if markdown.strip() else []
+    sections: list[tuple[int, str]] = []
+    for i, match in enumerate(matches):
+        start = match.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(markdown)
+        body = markdown[start:end].strip()
+        if body:
+            sections.append((int(match.group(1)), body))
+    return sections
+
+
 def chunk_document(doc: RawDocument) -> list[dict[str, object]]:
     """Chunk a document, splitting PDFs at page boundaries.
 
     Page boundaries are marked in the cleaned_text by the PDF extractor as
-    ``\\n\\n--- Page N ---\\n\\n``. For HTML docs there is no boundary, so the
+    ``<!-- page:N -->`` HTML comments. For HTML docs there is no boundary, so the
     whole text is chunked as one logical page.
     """
     text = (doc.cleaned_text or "").strip()
     if not text:
         return []
 
-    # PDF page markers injected by documents/pdf.py's to_markdown()
-    import re
+    pages = _split_by_page_marker(text)
 
-    page_pattern = re.compile(r"\n\n---\s*Page\s+(\d+)\s*---\n\n", re.IGNORECASE)
-    parts = page_pattern.split(text)
+    if not pages:
+        return chunk_text(text)
 
-    if len(parts) == 1:
-        # HTML or single-page PDF — no boundaries
+    # Single section with page 1 and no marker means no real boundaries found
+    if len(pages) == 1 and not _PAGE_MARKER.search(text):
         return chunk_text(text)
 
     all_chunks: list[dict[str, object]] = []
-    # parts alternates: text, page_num_str, text, page_num_str, ...
-    # First element is pre-first-page content (usually empty)
-    i = 0
-    current_page = 1
-    while i < len(parts):
-        if i % 2 == 0:
-            page_text = parts[i].strip()
-            if page_text:
-                all_chunks.extend(chunk_text(page_text, page_number=current_page))
-        else:
-            try:
-                current_page = int(parts[i])
-            except ValueError:
-                pass
-        i += 1
+    for page_number, page_text in pages:
+        all_chunks.extend(chunk_text(page_text, page_number=page_number))
 
     return all_chunks
 
@@ -181,6 +186,7 @@ async def embed_pending_documents(
     extraction_attempts counter guards against infinite retry on broken docs.
     """
     stats = EmbedStats()
+    all_new_chunks: list[DocumentChunk] = []
 
     # Select docs with cleaned text that have no chunks yet, regardless of
     # whether text extraction already ran. The ~exists() guard prevents
@@ -215,8 +221,9 @@ async def embed_pending_documents(
                 continue
 
             texts = [c["text"] for c in raw_chunks]  # type: ignore[index]
-            vectors = _embed(texts)
+            vectors = await async_embed(texts)
 
+            new_chunks: list[DocumentChunk] = []
             for idx, (chunk_data, vector) in enumerate(zip(raw_chunks, vectors, strict=True)):
                 chunk = DocumentChunk(
                     document_id=doc.id,
@@ -228,10 +235,12 @@ async def embed_pending_documents(
                     embedding=vector,
                 )
                 session.add(chunk)
+                new_chunks.append(chunk)
 
             doc.extraction_status = ExtractionStatus.EXTRACTED.value
             doc.processed_at = datetime.now(UTC)
             stats.chunks_created += len(raw_chunks)
+            all_new_chunks.extend(new_chunks)
         except Exception as exc:  # noqa: BLE001
             log.warning("embedding failed for document %s: %s", doc.id, exc)
             doc.extraction_status = ExtractionStatus.FAILED.value
@@ -245,22 +254,27 @@ async def embed_pending_documents(
     await session.flush()
 
     # Propagate firm_id from source → chunk so RAG can filter by firm without
-    # a join. Done in bulk after all chunks are flushed.
-    await _backfill_chunk_firm_ids(session)
+    # a join. Done in bulk after all chunks are flushed, scoped to new IDs only.
+    if all_new_chunks:
+        new_chunk_ids = [c.id for c in all_new_chunks if c.id is not None]
+        if new_chunk_ids:
+            await _backfill_chunk_firm_ids(session, new_chunk_ids)
 
     return stats
 
 
-async def _backfill_chunk_firm_ids(session: AsyncSession) -> None:
-    """Set firm_id on chunks whose parent document has a firm-specific source."""
+async def _backfill_chunk_firm_ids(
+    session: AsyncSession, chunk_ids: list[int]
+) -> None:
+    """Set firm_id on the given newly-created chunks whose parent document has a firm-specific source."""
     from sqlalchemy import update
 
     from app.models.source import Source
 
-    # Chunks whose document belongs to a firm-specific source but has no firm_id
     stmt = (
         update(DocumentChunk)
         .where(
+            DocumentChunk.id.in_(chunk_ids),
             DocumentChunk.firm_id.is_(None),
         )
         .values(
@@ -294,8 +308,8 @@ def _firm_profile_text(firm: Firm) -> str:
     return ". ".join(parts)
 
 
-async def embed_firms(session: AsyncSession) -> EmbedStats:
-    """Generate embeddings for firms that are missing one.
+async def embed_firms(session: AsyncSession, batch_size: int = 64) -> EmbedStats:
+    """Generate embeddings for active firms that are missing one or are stale.
 
     Re-embed any firm whose embedding_updated_at is older than 30 days (a
     firm's profile can change as new asset classes are added in firms.yaml).
@@ -309,7 +323,10 @@ async def embed_firms(session: AsyncSession) -> EmbedStats:
         (
             await session.execute(
                 select(Firm).where(
-                    (Firm.embedding.is_(None)) | (Firm.embedding_updated_at < cutoff)
+                    Firm.is_active.is_(True),
+                    (Firm.embedding.is_(None))
+                    | (Firm.embedding_updated_at.is_(None))
+                    | (Firm.embedding_updated_at < cutoff),
                 )
             )
         ).scalars()
@@ -318,12 +335,14 @@ async def embed_firms(session: AsyncSession) -> EmbedStats:
     if not firms:
         return stats
 
-    texts = [_firm_profile_text(f) for f in firms]
-    vectors = _embed(texts)
-
-    for firm, vector in zip(firms, vectors, strict=True):
-        firm.embedding = vector
-        firm.embedding_updated_at = datetime.now(UTC)
-        stats.firms_embedded += 1
+    for i in range(0, len(firms), batch_size):
+        batch = firms[i : i + batch_size]
+        texts = [_firm_profile_text(f) for f in batch]
+        vectors = await async_embed(texts)
+        now = datetime.now(UTC)
+        for firm, vector in zip(batch, vectors, strict=True):
+            firm.embedding = vector
+            firm.embedding_updated_at = now
+            stats.firms_embedded += 1
 
     return stats
