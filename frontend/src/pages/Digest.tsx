@@ -1,5 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
-import { getLatestDigest } from "../api/digest";
+import { useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { getLatestDigest, generateDigest } from "../api/digest";
 
 function fmtDate(s: string) {
   return new Date(s).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
@@ -37,21 +38,44 @@ function renderMarkdown(md: string) {
 }
 
 export default function Digest() {
-  const { data, isLoading, isError } = useQuery({
+  const queryClient = useQueryClient();
+
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ["digest-latest"],
     queryFn: getLatestDigest,
     retry: false,
   });
 
+  const { mutate: triggerGenerate, isPending: isGenerating } = useMutation({
+    mutationFn: generateDigest,
+    onSuccess: (generated) => {
+      queryClient.setQueryData(["digest-latest"], generated);
+    },
+  });
+
+  const is404 = isError && error instanceof Error && error.message.startsWith("404");
+
+  useEffect(() => {
+    if (is404) {
+      triggerGenerate();
+    }
+  }, [is404, triggerGenerate]);
+
+  const showLoading = isLoading || isGenerating;
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <h1 className="text-2xl font-semibold text-gray-900 mb-2">Weekly Digest</h1>
 
-      {isLoading && <p className="text-gray-500 text-sm">Loading…</p>}
+      {showLoading && (
+        <p className="text-gray-500 text-sm">
+          {isGenerating ? "Generating digest…" : "Loading…"}
+        </p>
+      )}
 
-      {isError && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded p-4 text-sm text-yellow-800">
-          No digest available yet. Run <code className="bg-yellow-100 px-1 rounded">propintel-ingest digest</code> to generate one.
+      {isError && !is404 && !isGenerating && (
+        <div className="bg-red-50 border border-red-200 rounded p-4 text-sm text-red-800">
+          Failed to load digest. Please try again later.
         </div>
       )}
 

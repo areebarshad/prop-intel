@@ -20,8 +20,21 @@ async def latest_digest(db: AsyncSession = Depends(get_db)) -> Digest:
         await db.execute(select(Digest).order_by(Digest.generated_at.desc()).limit(1))
     ).scalar_one_or_none()
     if digest is None:
-        raise HTTPException(
-            status_code=404,
-            detail="no digest generated yet; run `propintel-ingest digest`",
-        )
+        raise HTTPException(status_code=404, detail="no digest generated yet")
+    return digest
+
+
+@router.post("/generate", response_model=DigestOut)
+async def generate_digest(db: AsyncSession = Depends(get_db)) -> Digest:
+    """Generate (or refresh) the weekly digest on demand and return it."""
+    from app.services.digest import run_digest
+
+    await run_digest(db)
+    await db.flush()
+
+    digest = (
+        await db.execute(select(Digest).order_by(Digest.generated_at.desc()).limit(1))
+    ).scalar_one_or_none()
+    if digest is None:
+        raise HTTPException(status_code=500, detail="digest generation produced no output")
     return digest
