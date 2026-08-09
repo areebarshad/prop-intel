@@ -85,6 +85,13 @@ async def _compute_window(
 ) -> TrendWindow:
     """Aggregate signals, permits, and job postings into one TrendWindow row."""
     # Permit count and valuation
+    permit_where = [
+        Permit.firm_id == firm_id,
+        Permit.filed_date >= period_start.date(),
+        Permit.filed_date < period_end.date(),
+    ]
+    if locality is not None:
+        permit_where.append(Permit.locality == locality)
     permit_rows = list(
         (
             await session.execute(
@@ -93,11 +100,7 @@ async def _compute_window(
                         func.count().label("cnt"),
                         func.sum(Permit.valuation_usd).label("val"),
                     )
-                .where(
-                    Permit.firm_id == firm_id,
-                    Permit.filed_date >= period_start.date(),
-                    Permit.filed_date < period_end.date(),
-                )
+                .where(*permit_where)
                 .group_by(Permit.permit_type)
             )
         ).all()
@@ -109,13 +112,16 @@ async def _compute_window(
     # Asset-class mix from permit types
     asset_class_mix = _derive_asset_class_mix(permit_rows)
 
-    # Open job count at end of window
+    # Open job count during window: posted before window end and not yet closed
     open_jobs = (
         await session.scalar(
             select(func.count()).select_from(JobPosting).where(
                 JobPosting.firm_id == firm_id,
-                JobPosting.is_open.is_(True),
-                JobPosting.first_seen_at < period_end,
+                JobPosting.first_seen_at <= period_end,
+                or_(
+                    JobPosting.closed_at.is_(None),
+                    JobPosting.closed_at > period_start,
+                ),
             )
         )
     ) or 0
@@ -135,13 +141,16 @@ async def _compute_window(
     # New projects announced in window
     from app.models.project import PropertyProject
 
+    project_where = [
+        PropertyProject.firm_id == firm_id,
+        PropertyProject.announced_date >= period_start.date(),
+        PropertyProject.announced_date < period_end.date(),
+    ]
+    if locality is not None:
+        project_where.append(PropertyProject.locality == locality)
     project_count = (
         await session.scalar(
-            select(func.count()).select_from(PropertyProject).where(
-                PropertyProject.firm_id == firm_id,
-                PropertyProject.announced_date >= period_start.date(),
-                PropertyProject.announced_date < period_end.date(),
-            )
+            select(func.count()).select_from(PropertyProject).where(*project_where)
         )
     ) or 0
 
@@ -484,20 +493,17 @@ async def run_trend_detection(
         )
         stats.windows_computed += 1
 
-        # Load prior windows for baseline
-        baseline = list(
-            (
-                await session.execute(
-                    select(TrendWindow)
-                    .where(
-                        TrendWindow.firm_id == firm.id,
-                        TrendWindow.period_start < period_start,
-                    )
-                    .order_by(TrendWindow.period_start.desc())
-                    .limit(BASELINE_WINDOWS)
-                )
-            ).scalars()
-        )
+        # Compute discrete non-overlapping baseline windows (no shared days
+        # between blocks, so per-block counts are independent and stdev is valid).
+        baseline: list[TrendWindow] = []
+        for i in range(1, BASELINE_WINDOWS + 1):
+            bl_end = period_start - timedelta(days=window_days * (i - 1))
+            bl_start = bl_end - timedelta(days=window_days)
+            bl_window = await _compute_window(
+                session, firm.id, firm.county, bl_start, bl_end
+            )
+            baseline.append(bl_window)
+            stats.windows_computed += 1
 
         # Run detectors
         await _detect_hiring_surge(session, firm, current, baseline, stats)
