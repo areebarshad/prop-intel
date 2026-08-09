@@ -13,6 +13,7 @@ back empty is treated as a failed crawl, not as a mass departure.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -60,13 +61,15 @@ class RosterStats:
     departures: int = 0
     jobs_added: int = 0
     jobs_closed: int = 0
+    jobs_reopened: int = 0
     signals_created: int = 0
 
     def __str__(self) -> str:
         return (
             f"people: {self.people_added} new, {self.people_updated} seen, "
             f"{self.departures} departed; jobs: {self.jobs_added} new, "
-            f"{self.jobs_closed} closed; signals: {self.signals_created}"
+            f"{self.jobs_reopened} reopened, {self.jobs_closed} closed; "
+            f"signals: {self.signals_created}"
         )
 
 
@@ -194,7 +197,7 @@ async def ingest_roster(
                 ),
                 # A senior hire is materially more interesting than a coordinator.
                 score=0.8 if is_senior(member.job_title) else 0.45,
-                dedupe_key=f"hire:{firm_id}:{canonical}",
+                dedupe_key=f"hire:{firm_id}:{canonical}:{now.year}:Q{(now.month - 1) // 3 + 1}",
                 source_document_id=source_document_id,
                 payload={"name": member.name, "title": member.job_title},
             ):
@@ -222,7 +225,7 @@ async def ingest_roster(
             title=f"{person.name} no longer listed as {person.title or 'team member'}",
             summary=f"{person.name} has been removed from the firm's team page.",
             score=0.7 if is_senior(person.title) else 0.35,
-            dedupe_key=f"departure:{firm_id}:{canonical}",
+            dedupe_key=f"departure:{firm_id}:{canonical}:{now.year}:Q{(now.month - 1) // 3 + 1}",
             source_document_id=source_document_id,
             payload={"name": person.name, "title": person.title},
         ):
@@ -282,6 +285,8 @@ async def ingest_job_listings(
             )
             stats.jobs_added += 1
         else:
+            if not posting.is_open:
+                stats.jobs_reopened += 1
             posting.last_seen_at = now
             posting.is_open = True
             posting.closed_at = None
@@ -294,15 +299,18 @@ async def ingest_job_listings(
         stats.jobs_closed += 1
 
     await session.flush()
-    open_after = open_before + stats.jobs_added - stats.jobs_closed
+    open_after = open_before + stats.jobs_added + stats.jobs_reopened - stats.jobs_closed
 
     # A jump in open roles is a firm staffing up for work it has not filed yet.
-    if (
-        open_after >= HIRING_SURGE_MIN_OPEN
-        and open_before > 0
-        and open_after >= open_before * HIRING_SURGE_RATIO
+    # Allow open_before == 0: going from zero to HIRING_SURGE_MIN_OPEN is a
+    # valid surge (infinite ratio), so we only require the ratio when there is a
+    # non-zero baseline to compare against.
+    if open_after >= HIRING_SURGE_MIN_OPEN and (
+        open_before == 0 or open_after >= open_before * HIRING_SURGE_RATIO
     ):
         period = now.date().isoformat()
+        raw_key = f"{SignalType.HIRING_SURGE}:{firm_id}:{period}"
+        dedupe_key = hashlib.sha256(raw_key.encode()).hexdigest()[:40]
         if await _add_signal(
             session,
             firm_id=firm_id,
@@ -313,7 +321,7 @@ async def ingest_job_listings(
                 "open roles, which often precedes a new project."
             ),
             score=0.65,
-            dedupe_key=f"hiring_surge:{firm_id}:{period}",
+            dedupe_key=dedupe_key,
             source_document_id=source_document_id,
             payload={"open_before": open_before, "open_after": open_after},
         ):

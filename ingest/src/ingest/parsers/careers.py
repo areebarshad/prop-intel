@@ -112,7 +112,7 @@ class CareersParser(BaseParser):
 
         # Bug 37: merge both passes so a single JSON-LD JobPosting (e.g. a
         # "featured role" embed) doesn't suppress the full structural listing.
-        jsonld_listings = self._from_jsonld(raw_tree)
+        jsonld_listings = self._from_jsonld(raw_tree, page_url=res.final_url)
         link_listings = self._from_links(tree, res.final_url)
         seen_titles = {j.job_title.lower() for j in jsonld_listings}
         listings = list(jsonld_listings)
@@ -139,7 +139,7 @@ class CareersParser(BaseParser):
         )
 
     @staticmethod
-    def _from_jsonld(tree: HTMLParser) -> list[JobListing]:
+    def _from_jsonld(tree: HTMLParser, *, page_url: str = "") -> list[JobListing]:
         """schema.org JobPosting, which most ATS platforms emit."""
         listings: list[JobListing] = []
         for obj in jsonld_objects(tree):
@@ -160,10 +160,11 @@ class CareersParser(BaseParser):
                     region = address.get("addressRegion")
                     location = ", ".join(p for p in (city, region) if p) or None
 
+            posting_url = _as_str(obj.get("url")) or page_url
             try:
                 listings.append(
                     JobListing(
-                        source_url="",
+                        source_url=posting_url,
                         job_title=title,
                         location=location,
                         employment_type=_as_str(obj.get("employmentType")),
@@ -204,7 +205,7 @@ class CareersParser(BaseParser):
             try:
                 listings.append(
                     JobListing(
-                        source_url="",
+                        source_url=absolute,
                         job_title=text,
                         location=self._location_near(anchor),
                         url=absolute,

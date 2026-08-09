@@ -182,9 +182,9 @@ class TeamParser(BaseParser):
         # Bug 37: filter JSON-LD results to those with a job title so that bare
         # Person entries (article authors, bylines) don't suppress the structural
         # team pass, which is the authoritative roster source for most sites.
-        jsonld_members = self._from_jsonld(raw_tree)
+        jsonld_members = self._from_jsonld(raw_tree, page_url=res.final_url)
         valid_jsonld = [m for m in jsonld_members if m.job_title]
-        members = valid_jsonld or self._from_structure(tree)
+        members = valid_jsonld or self._from_structure(tree, page_url=res.final_url)
         if not members:
             return None
 
@@ -210,7 +210,7 @@ class TeamParser(BaseParser):
         )
 
     @staticmethod
-    def _from_jsonld(tree: HTMLParser) -> list[TeamMember]:
+    def _from_jsonld(tree: HTMLParser, *, page_url: str = "") -> list[TeamMember]:
         """schema.org Person entries, when a site publishes them.
 
         Cheapest and most reliable path — no heuristics involved.
@@ -224,10 +224,11 @@ class TeamParser(BaseParser):
             name = obj.get("name")
             if not isinstance(name, str):
                 continue
+            url = _first_str(obj.get("url")) or _first_str(obj.get("sameAs")) or page_url
             try:
                 members.append(
                     TeamMember(
-                        source_url="",
+                        source_url=url,
                         name=name,
                         job_title=_first_str(obj.get("jobTitle")),
                         email=_first_str(obj.get("email")),
@@ -238,14 +239,14 @@ class TeamParser(BaseParser):
                 continue
         return members
 
-    def _from_structure(self, tree: HTMLParser) -> list[TeamMember]:
+    def _from_structure(self, tree: HTMLParser, *, page_url: str = "") -> list[TeamMember]:
         """Find repeated name+title pairs in the page structure."""
         seen: set[str] = set()
         members: list[TeamMember] = []
 
         for selector in MEMBER_SELECTORS:
             for node in tree.css(selector):
-                member = self._member_from_node(node)
+                member = self._member_from_node(node, page_url=page_url)
                 if member is None:
                     continue
                 key = member.name.lower()
@@ -261,7 +262,7 @@ class TeamParser(BaseParser):
 
         return members
 
-    def _member_from_node(self, node: Node) -> TeamMember | None:
+    def _member_from_node(self, node: Node, *, page_url: str = "") -> TeamMember | None:
         # Look at short leaf-ish texts: headings, then anything else.
         candidates = [
             _node_text(child)
@@ -289,15 +290,17 @@ class TeamParser(BaseParser):
             break
 
         linkedin = None
+        profile_url = page_url
         for a in node.css("a[href]"):
             href = a.attributes.get("href") or ""
             if "linkedin.com" in href:
                 linkedin = href
-                break
+            elif href and not href.startswith("mailto:") and not href.startswith("tel:"):
+                profile_url = href
 
         try:
             return TeamMember(
-                source_url="",
+                source_url=profile_url,
                 name=name,
                 job_title=title,
                 email=email or None,
