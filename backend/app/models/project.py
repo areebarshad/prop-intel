@@ -44,6 +44,7 @@ class PropertyProject(Base, UUIDPrimaryKey, Timestamped):
         ForeignKey("firms.id", ondelete="SET NULL"), index=True
     )
     name: Mapped[str] = mapped_column(String(400), index=True)
+    canonical_name: Mapped[str | None] = mapped_column(String(400), index=True)
     project_type: Mapped[str | None] = mapped_column(String(40), index=True)
     status: Mapped[str] = mapped_column(String(30), default="proposed", index=True)
 

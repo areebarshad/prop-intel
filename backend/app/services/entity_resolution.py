@@ -36,6 +36,11 @@ from app.services.naming import (
     normalize_phone,
 )
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 log = logging.getLogger(__name__)
 
 # At or above this, a fuzzy match is accepted on its own.
@@ -334,6 +339,55 @@ class EntityResolver:
 
         candidates.sort(key=lambda c: c.effective_score, reverse=True)
         return candidates
+
+    @classmethod
+    async def fetch_trgm_candidates(
+        cls,
+        session: "AsyncSession",
+        canonical_mention: str,
+        *,
+        limit: int = MAX_CANDIDATES,
+        similarity_threshold: float = 0.1,
+    ) -> list[FirmRecord]:
+        """Return FirmRecords whose canonical_name is trigram-similar to the mention.
+
+        Uses ix_firms_canonical_name_trgm and ix_firm_aliases_canonical_trgm so
+        the DB narrows the candidate set before any in-Python fuzzy scoring. Call
+        this when you want to build a resolver scoped to just one mention rather
+        than loading all firms up front.
+        """
+        from sqlalchemy import func, select
+        from sqlalchemy.orm import selectinload
+
+        from app.models.firm import Firm
+
+        firms = list(
+            (
+                await session.execute(
+                    select(Firm)
+                    .options(selectinload(Firm.aliases))
+                    .where(
+                        func.similarity(Firm.canonical_name, canonical_mention)
+                        > similarity_threshold
+                    )
+                    .order_by(
+                        func.similarity(Firm.canonical_name, canonical_mention).desc()
+                    )
+                    .limit(limit)
+                )
+            ).scalars()
+        )
+        return [
+            FirmRecord(
+                id=str(firm.id),
+                name=firm.name,
+                canonical_name=firm.canonical_name,
+                aliases=tuple(alias.alias for alias in firm.aliases),
+                address=firm.hq_address,
+                phone=firm.phone,
+            )
+            for firm in firms
+        ]
 
     @staticmethod
     def _corroborate(mention: Mention, firm: FirmRecord) -> tuple[str, ...]:

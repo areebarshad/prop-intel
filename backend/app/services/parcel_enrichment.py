@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.project import Permit
 from app.models.signal import Signal
 from app.services.entity_resolution import EntityResolver, Mention, Resolution
-from app.services.permit_ingest import _record_alias
+from app.services.permit_ingest import _queue_for_review, _record_alias
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +61,8 @@ class ParcelEnrichStats:
             f"{self.permits_attributed} attributed, "
             f"{self.permits_queued} queued, "
             f"{self.permits_no_owner} no owner row, "
-            f"{self.permits_unresolved} unresolved"
+            f"{self.permits_unresolved} unresolved, "
+            f"{self.errors} errors"
         )
 
 
@@ -97,20 +98,18 @@ async def fetch_parcel_owners(
     url = f"{service_url}/{layer_id}/query"
 
     result: dict[str, str] = {}
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(url, params=params)
-            resp.raise_for_status()
-            data = resp.json()
-            for feature in data.get("features") or []:
-                attrs = feature.get("attributes") or {}
-                pid = attrs.get(parcel_id_field)
-                owner = attrs.get(owner_field)
-                if pid and owner:
-                    result[str(pid)] = str(owner)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("parcel owner fetch failed: %s", exc)
-
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(url, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        for feature in data.get("features") or []:
+            attrs = feature.get("attributes") or {}
+            pid = attrs.get(parcel_id_field)
+            owner = attrs.get(owner_field)
+            if pid and owner:
+                result[str(pid)] = str(owner)
+    # An empty result here means the parcel service returned no features —
+    # a confirmed "no owner" row, not a failed request.
     return result
 
 
@@ -162,13 +161,20 @@ async def enrich_permits_with_parcel_owners(
         parcel_ids = [p.parcel_id for p in batch if p.parcel_id]
         stats.parcel_ids_fetched += len(parcel_ids)
 
-        owner_map = await fetch_parcel_owners(
-            parcel_ids,
-            service_url=service_url,
-            layer_id=layer_id,
-            parcel_id_field=parcel_id_field,
-            owner_field=owner_field,
-        )
+        try:
+            owner_map = await fetch_parcel_owners(
+                parcel_ids,
+                service_url=service_url,
+                layer_id=layer_id,
+                parcel_id_field=parcel_id_field,
+                owner_field=owner_field,
+            )
+        except Exception as exc:
+            log.error(
+                "parcel owner fetch failed for batch at index %d: %s", batch_start, exc
+            )
+            stats.errors += len(parcel_ids)
+            continue
 
         for permit in batch:
             if not permit.parcel_id:
@@ -201,6 +207,7 @@ async def enrich_permits_with_parcel_owners(
                         owner_name,
                         outcome.method,
                         outcome.confidence,
+                        resolver=resolver,
                     )
 
                 # Backfill firm_id on any existing signal for this permit so
@@ -217,6 +224,13 @@ async def enrich_permits_with_parcel_owners(
             elif outcome.status == ResolutionStatus.AMBIGUOUS:
                 stats.permits_queued += 1
                 stats.permits_unresolved += 1
+                await _queue_for_review(session, owner_name, outcome.candidates, permit.id)
+                log.debug(
+                    "permit %s parcel owner %r queued for review (%d candidates)",
+                    permit.permit_number,
+                    owner_name,
+                    len(outcome.candidates),
+                )
             else:
                 stats.permits_unresolved += 1
 

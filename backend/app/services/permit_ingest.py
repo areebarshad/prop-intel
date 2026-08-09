@@ -66,6 +66,21 @@ async def load_firm_records(session: AsyncSession) -> list[FirmRecord]:
     firms = list(
         (await session.execute(select(Firm).options(selectinload(Firm.aliases)))).scalars()
     )
+    # Collect known parcel_ids per firm from attributed permits so corroboration
+    # can fire on parcel evidence without a separate join per mention.
+    parcel_rows = list(
+        (
+            await session.execute(
+                select(Permit.firm_id, Permit.parcel_id).where(
+                    Permit.firm_id.is_not(None), Permit.parcel_id.is_not(None)
+                ).distinct()
+            )
+        ).all()
+    )
+    firm_parcel_map: dict[str, list[str]] = {}
+    for fid, pid in parcel_rows:
+        firm_parcel_map.setdefault(str(fid), []).append(pid)
+
     return [
         FirmRecord(
             id=str(firm.id),
@@ -74,6 +89,7 @@ async def load_firm_records(session: AsyncSession) -> list[FirmRecord]:
             aliases=tuple(alias.alias for alias in firm.aliases),
             address=firm.hq_address,
             phone=firm.phone,
+            parcel_ids=tuple(firm_parcel_map.get(str(firm.id), [])),
         )
         for firm in firms
     ]
@@ -102,7 +118,13 @@ def _permit_score(valuation: float | None, permit_type: str | None) -> float:
 
 
 async def _record_alias(
-    session: AsyncSession, firm_id: str, mention: str, method: ResolutionMethod, confidence: float
+    session: AsyncSession,
+    firm_id: str,
+    mention: str,
+    method: ResolutionMethod,
+    confidence: float,
+    *,
+    resolver: EntityResolver | None = None,
 ) -> None:
     """Memoize an inferred match so the next filing under this name is exact.
 
@@ -130,6 +152,12 @@ async def _record_alias(
     )
     # Make it visible to the next lookup in this same batch.
     await session.flush()
+    # Sync the in-memory alias map so subsequent mentions in the same batch
+    # resolve via the cheap exact path rather than re-running fuzzy/LLM.
+    if resolver is not None:
+        firm_record = next((f for f in resolver.firms if f.id == firm_id), None)
+        if firm_record is not None:
+            resolver._by_alias.setdefault(canonical, firm_record)
 
 
 async def _queue_for_review(
@@ -205,7 +233,11 @@ async def ingest_permit_records(
 
         if record.has_mention:
             resolution = resolver.resolve(
-                Mention(record.applicant_name_raw, address=record.address)
+                Mention(
+                    record.applicant_name_raw,
+                    address=record.address,
+                    parcel_id=getattr(record, "parcel_id", None),
+                )
             )
             if resolution.is_resolved and resolution.firm_id:
                 firm_id = UUID(resolution.firm_id)
@@ -219,6 +251,7 @@ async def ingest_permit_records(
                         record.applicant_name_raw,
                         resolution.method,
                         resolution.confidence,
+                        resolver=resolver,
                     )
             elif resolution.status is ResolutionStatus.AMBIGUOUS:
                 stats.ambiguous += 1

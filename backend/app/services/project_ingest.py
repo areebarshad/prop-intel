@@ -105,11 +105,13 @@ async def ingest_announcement(
         stats.unattributed += 1
 
     # Natural key: same project name in the same locality is the same project.
+    # Use canonicalized name for lookup so different capitalizations/punctuation
+    # of the same project don't create duplicate rows.
     canonical_name = canonicalize(name)
     existing = (
         await session.execute(
             select(PropertyProject).where(
-                PropertyProject.name == name[:400],
+                PropertyProject.canonical_name == canonical_name[:400],
                 PropertyProject.locality == announcement.locality,
             )
         )
@@ -130,6 +132,7 @@ async def ingest_announcement(
     if existing is None:
         project = PropertyProject(
             name=name[:400],
+            canonical_name=canonical_name[:400],
             firm_id=firm_id,
             # News reports an intention, not an approval.
             status=ProjectStatus.PROPOSED.value,

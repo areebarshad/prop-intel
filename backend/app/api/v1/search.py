@@ -70,16 +70,16 @@ async def search_firms(body: SearchQuery, db: AsyncSession = Depends(get_db)) ->
         firms = list((await db.execute(query)).scalars())
         return {"firms": firms, "query": body.q, "semantic": True}
 
-    # Fallback: trigram keyword search — apply the same base_filter so
-    # asset_class / locality constraints are respected even without embeddings.
-    keyword = f"%{body.q}%"
+    # Fallback: PostgreSQL trigram similarity — uses ix_firms_canonical_name_trgm
+    # index rather than a sequential ILIKE scan.
+    similarity_fn = func.similarity(Firm.name, body.q)
     query = (
         select(Firm)
         .where(
             *base_filter,
-            Firm.name.ilike(keyword),
+            similarity_fn > 0.1,
         )
-        .order_by(Firm.name)
+        .order_by(similarity_fn.desc())
         .limit(body.limit)
     )
     firms = list((await db.execute(query)).scalars())
