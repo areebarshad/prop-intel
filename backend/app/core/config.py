@@ -8,11 +8,27 @@ rotated without touching code, per the platform's configuration contract.
 
 from __future__ import annotations
 
+import time
 from functools import lru_cache
 from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Circuit breaker: timestamp until which LLM calls are suppressed (0 = closed).
+_llm_circuit_open_until: float = 0.0
+_LLM_CIRCUIT_DURATION: float = 300.0  # 5 minutes
+
+
+def open_llm_circuit() -> None:
+    """Call after exhausting LLM retries to suppress calls for 5 minutes."""
+    global _llm_circuit_open_until
+    _llm_circuit_open_until = time.monotonic() + _LLM_CIRCUIT_DURATION
+
+
+def llm_circuit_is_open() -> bool:
+    return time.monotonic() < _llm_circuit_open_until
+
 
 Environment = Literal["development", "staging", "production", "test"]
 
@@ -49,7 +65,13 @@ class LLMSettings(BaseSettings):
 
     @property
     def is_configured(self) -> bool:
-        return self.enabled
+        if not self.enabled:
+            return False
+        if not self.base_url or self.api_key is None:
+            return False
+        if llm_circuit_is_open():
+            return False
+        return True
 
 
 class EmbeddingSettings(BaseSettings):

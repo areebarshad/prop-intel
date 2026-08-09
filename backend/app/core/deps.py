@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import time
 from datetime import UTC, datetime
 
 import jwt
@@ -28,6 +29,10 @@ log = logging.getLogger(__name__)
 
 # In-memory fallback: user_id -> (window_start_ts, request_count)
 _rate_buckets: dict[str, tuple[float, int]] = {}
+
+# Throttle last_used_at writes: key_hash -> last update monotonic timestamp.
+_last_used_cache: dict[str, float] = {}
+_LAST_USED_TTL: float = 300.0  # 5 minutes
 
 # Redis client — lazily initialised when redis_url is set.
 _redis_client: object | None = None
@@ -113,8 +118,11 @@ async def _resolve_user_from_api_key(raw_key: str, db: AsyncSession) -> User:
     user = await db.get(User, api_key.user_id)
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="user inactive")
-    # Bump last_used_at without a full flush — fire and forget at session close.
-    api_key.last_used_at = datetime.now(UTC)
+    now_mono = time.monotonic()
+    last = _last_used_cache.get(key_hash, 0.0)
+    if now_mono - last >= _LAST_USED_TTL:
+        api_key.last_used_at = datetime.now(UTC)
+        _last_used_cache[key_hash] = now_mono
     return user
 
 
