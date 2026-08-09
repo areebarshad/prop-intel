@@ -1,9 +1,8 @@
-import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { listAlerts, toggleAlert, deleteAlert } from "../api/alerts";
+import { getToken } from "../api/auth";
 import type { AlertOut } from "../api/types";
-
-const USER_ID_KEY = "propintel_user_id";
 
 function fmtDate(s: string | null) {
   if (!s) return "—";
@@ -11,55 +10,45 @@ function fmtDate(s: string | null) {
 }
 
 export default function Alerts() {
-  const [userId, setUserId] = useState(() => localStorage.getItem(USER_ID_KEY) ?? "");
-  const [inputId, setInputId] = useState(userId);
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isLoggedIn = !!getToken();
 
   const { data: alerts, isLoading, isError } = useQuery({
-    queryKey: ["alerts", userId],
-    queryFn: () => listAlerts(userId),
-    enabled: !!userId,
+    queryKey: ["alerts"],
+    queryFn: () => listAlerts(),
+    enabled: isLoggedIn,
   });
 
   const toggleMutation = useMutation({
     mutationFn: (id: string) => toggleAlert(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["alerts", userId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["alerts"] }),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteAlert(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["alerts", userId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["alerts"] }),
   });
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    localStorage.setItem(USER_ID_KEY, inputId);
-    setUserId(inputId);
+  if (!isLoggedIn) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 py-8">
+        <p className="text-sm text-gray-400">
+          <button
+            onClick={() => navigate("/login")}
+            className="text-blue-600 hover:underline"
+          >
+            Sign in
+          </button>{" "}
+          to view your alerts.
+        </p>
+      </div>
+    );
   }
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
       <h1 className="text-2xl font-semibold text-gray-900 mb-6">Alerts</h1>
-
-      <form onSubmit={handleSubmit} className="flex gap-2 mb-6">
-        <input
-          type="text"
-          placeholder="User ID (UUID)"
-          value={inputId}
-          onChange={(e) => setInputId(e.target.value)}
-          className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-        />
-        <button
-          type="submit"
-          className="bg-blue-600 text-white text-sm px-4 py-2 rounded hover:bg-blue-700"
-        >
-          Load
-        </button>
-      </form>
-
-      {!userId && (
-        <p className="text-sm text-gray-400">Enter a user ID to view alerts.</p>
-      )}
 
       {isLoading && <p className="text-sm text-gray-500">Loading…</p>}
       {isError && <p className="text-sm text-red-500">Failed to load alerts.</p>}

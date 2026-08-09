@@ -1,8 +1,8 @@
 import { api } from "./client";
 import type { AlertCreate, AlertOut } from "./types";
 
-export function listAlerts(userId: string): Promise<AlertOut[]> {
-  return api.get<AlertOut[]>(`/alerts?user_id=${encodeURIComponent(userId)}`);
+export function listAlerts(): Promise<AlertOut[]> {
+  return api.get<AlertOut[]>("/alerts");
 }
 
 export function createAlert(body: AlertCreate): Promise<AlertOut> {

@@ -94,3 +94,39 @@ export interface PaginatedFirms {
   page: number;
   page_size: number;
 }
+
+// ── Auth ───────────────────────────────────────────────────────────────────────
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  user_id: string;
+}
+
+export interface UserOut {
+  id: string;
+  email: string;
+  full_name: string | null;
+  company: string | null;
+  tier: string;
+  is_active: boolean;
+  is_superuser: boolean;
+  last_login_at: string | null;
+  created_at: string;
+}
+
+// ── API Keys ───────────────────────────────────────────────────────────────────
+
+export interface ApiKeyOut {
+  id: string;
+  name: string;
+  key_prefix: string;
+  tier: string;
+  last_used_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+}
+
+export interface ApiKeyCreated extends ApiKeyOut {
+  key: string;
+}

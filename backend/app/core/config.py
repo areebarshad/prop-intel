@@ -118,6 +118,11 @@ class Settings(BaseSettings):
         default_factory=lambda: ["http://localhost:3000", "http://localhost:5173"]
     )
 
+    # Optional Redis URL for shared rate-limit buckets (multi-process deployments).
+    # Format: redis://[:password@]host[:port][/db]
+    # When absent, deps.py falls back to in-process memory buckets.
+    redis_url: str | None = None
+
     llm: LLMSettings = Field(default_factory=LLMSettings)
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     security: SecuritySettings = Field(default_factory=SecuritySettings)

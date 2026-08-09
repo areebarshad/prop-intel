@@ -19,11 +19,14 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import httpx
+
 from app.core.config import settings
 from app.models.alert import Digest
 from app.models.enums import SignalType
 from app.models.firm import Firm
 from app.models.signal import Signal
+from app.models.user import User
 
 log = logging.getLogger(__name__)
 
@@ -216,5 +219,90 @@ async def run_digest(
         existing.firm_count = stats.firms_covered
         existing.signal_ids = all_signal_ids
         existing.generated_at = now
+
+    return stats
+
+
+@dataclass(slots=True)
+class DigestDeliveryStats:
+    recipients: int = 0
+    sent: int = 0
+    skipped: int = 0
+    errors: int = 0
+
+    def __str__(self) -> str:
+        return (
+            f"{self.sent}/{self.recipients} sent, "
+            f"{self.skipped} skipped, {self.errors} errors"
+        )
+
+
+async def deliver_digest(
+    session: AsyncSession,
+    *,
+    digest_id: Any | None = None,
+) -> DigestDeliveryStats:
+    """Email the most recent (or specified) digest to all active users.
+
+    Requires PROPINTEL_NOTIFY__RESEND_API_KEY.  Skips gracefully when not
+    configured so the command is safe to run in development.
+    """
+    from sqlalchemy.orm import selectinload
+
+    stats = DigestDeliveryStats()
+
+    if not settings.notify.resend_api_key:
+        log.warning("deliver-digest: PROPINTEL_NOTIFY__RESEND_API_KEY not set; skipping delivery")
+        return stats
+
+    # Load the digest.
+    if digest_id is not None:
+        digest = await session.get(Digest, digest_id)
+    else:
+        digest = (
+            await session.execute(
+                select(Digest).order_by(Digest.period_start.desc()).limit(1)
+            )
+        ).scalar_one_or_none()
+
+    if digest is None:
+        log.info("no digest available; run `propintel-ingest digest` first")
+        return stats
+
+    # Load all active users with an email address.
+    users: list[User] = list(
+        (
+            await session.execute(
+                select(User).where(User.is_active.is_(True))
+            )
+        ).scalars()
+    )
+    stats.recipients = len(users)
+
+    subject = digest.title or f"PropIntel Weekly Digest — {digest.period_start}"
+    html_body = f"<pre style='font-family:monospace;white-space:pre-wrap'>{digest.markdown}</pre>"
+
+    api_key = settings.notify.resend_api_key.get_secret_value()
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        for user in users:
+            try:
+                resp = await client.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    json={
+                        "from": settings.notify.from_email,
+                        "to": [user.email],
+                        "subject": subject,
+                        "html": html_body,
+                    },
+                )
+                if resp.status_code >= 400:
+                    log.warning("resend error %s for %s: %s", resp.status_code, user.email, resp.text[:200])
+                    stats.errors += 1
+                else:
+                    stats.sent += 1
+            except Exception as exc:  # noqa: BLE001
+                log.warning("delivery failed for %s: %s", user.email, exc)
+                stats.errors += 1
 
     return stats

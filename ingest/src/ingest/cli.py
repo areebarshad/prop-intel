@@ -649,6 +649,33 @@ def digest(
     asyncio.run(_run())
 
 
+@app.command("deliver-digest")
+def deliver_digest_cmd(
+    dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+) -> None:
+    """Email the latest weekly digest to all active users.
+
+    Requires PROPINTEL_NOTIFY__RESEND_API_KEY.
+    Run `propintel-ingest digest` first to generate the digest if needed.
+    """
+    from app.services.digest import deliver_digest
+
+    async def _run() -> None:
+        async with session_scope() as session:
+            if dry_run:
+                from app.models.user import User
+
+                count = await session.scalar(
+                    select(func.count()).select_from(User).where(User.is_active.is_(True))
+                )
+                typer.echo(f"  would send digest to {count} active users")
+                return
+            stats = await deliver_digest(session)
+            typer.secho(str(stats), fg=typer.colors.GREEN)
+
+    asyncio.run(_run())
+
+
 @app.command("deliver-alerts")
 def deliver_alerts(
     hours: Annotated[int, typer.Option(help="Look back this many hours for new signals")] = 25,

@@ -27,6 +27,9 @@ dependencies = [
     "pyjwt>=2.9",
     "passlib[bcrypt]>=1.7.4",
     "slowapi>=0.1.9",
+    "email-validator>=2.1",
+    # optional shared rate limiting (falls back to in-memory when not configured)
+    "redis[asyncio]>=5.0",
     # ai
     "anthropic>=0.34",
     "sentence-transformers>=3.0",

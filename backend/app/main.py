@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="PropIntel",
     description="Competitive intelligence for Virginia commercial real estate.",
-    version="0.3.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 

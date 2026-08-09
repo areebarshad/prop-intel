@@ -6,7 +6,7 @@ from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, model_validator
 
 
 class FirmSummary(BaseModel):
@@ -176,3 +176,60 @@ class AlertOut(BaseModel):
     last_fired_at: datetime | None
     fire_count: int
     created_at: datetime
+
+
+# ── Auth ───────────────────────────────────────────────────────────────────────
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+    full_name: str | None = Field(default=None, max_length=200)
+    company: str | None = Field(default=None, max_length=200)
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user_id: str
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    email: str
+    full_name: str | None
+    company: str | None
+    tier: str
+    is_active: bool
+    is_superuser: bool
+    last_login_at: datetime | None
+    created_at: datetime
+
+
+# ── API Keys ───────────────────────────────────────────────────────────────────
+
+class ApiKeyCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+class ApiKeyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    key_prefix: str
+    tier: str
+    last_used_at: datetime | None
+    expires_at: datetime | None
+    created_at: datetime
+
+
+class ApiKeyCreated(ApiKeyOut):
+    """Returned only at creation — the plaintext key is not stored."""
+    key: str
