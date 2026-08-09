@@ -8,6 +8,7 @@ import Ask from "./pages/Ask";
 import Alerts from "./pages/Alerts";
 import Digest from "./pages/Digest";
 import Login from "./pages/Login";
+import Settings from "./pages/Settings";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -65,6 +66,14 @@ export default function App() {
                   element={
                     <ErrorBoundary>
                       <Digest />
+                    </ErrorBoundary>
+                  }
+                />
+                <Route
+                  path="/settings"
+                  element={
+                    <ErrorBoundary>
+                      <Settings />
                     </ErrorBoundary>
                   }
                 />

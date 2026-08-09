@@ -6,6 +6,7 @@ const links = [
   { to: "/ask", label: "Ask" },
   { to: "/alerts", label: "Alerts" },
   { to: "/digest", label: "Digest" },
+  { to: "/settings", label: "Settings" },
 ];
 
 export default function Nav() {

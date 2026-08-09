@@ -100,6 +100,13 @@ async def login(
     return TokenResponse(access_token=token, token_type="bearer", user_id=str(user.id))
 
 
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh(current_user: User = Depends(get_current_user)) -> TokenResponse:
+    """Issue a fresh JWT from a still-valid one. Call before expiry to stay logged in."""
+    token = _issue_token(str(current_user.id))
+    return TokenResponse(access_token=token, token_type="bearer", user_id=str(current_user.id))
+
+
 @router.get("/me", response_model=UserOut)
 async def me(current_user: User = Depends(get_current_user)) -> User:
     return current_user

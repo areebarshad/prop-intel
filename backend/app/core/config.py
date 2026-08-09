@@ -75,7 +75,8 @@ class LLMSettings(BaseSettings):
 
 
 class EmbeddingSettings(BaseSettings):
-    """Local sentence-transformers embeddings — no API cost per document."""
+    """fastembed (ONNX Runtime) embeddings — same model weights as sentence-transformers,
+    ~10x lower RAM because there is no PyTorch initialisation overhead."""
 
     model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     # Must match the VECTOR(n) column width in the migrations. Changing the model

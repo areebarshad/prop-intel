@@ -8,7 +8,9 @@ Two embedding levels, two purposes:
   firms.embedding            — firm-card vectors for "find me industrial
                                developers in Northern Virginia"-style search
 
-Both use the same local sentence-transformers model (no API cost per document).
+Both use fastembed (ONNX Runtime) instead of sentence-transformers (PyTorch).
+FastEmbed uses the same model weights via ONNX, with ~10x lower RAM overhead
+— no GPU memory allocation, no PyTorch initialisation on startup.
 The dimensions must match the VECTOR(n) column widths in the migrations; they
 are set in EmbeddingSettings.
 """
@@ -24,7 +26,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
-import numpy as np
 from sqlalchemy import exists as sa_exists
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,34 +36,28 @@ from app.models.enums import ExtractionStatus
 from app.models.firm import Firm
 
 if TYPE_CHECKING:
-    from sentence_transformers import SentenceTransformer
+    from fastembed import TextEmbedding
 
 log = logging.getLogger(__name__)
 
-_model: SentenceTransformer | None = None
+_model: TextEmbedding | None = None
 
 
-def _get_model() -> SentenceTransformer:
+def _get_model() -> TextEmbedding:
     global _model
     if _model is None:
-        from sentence_transformers import SentenceTransformer
+        from fastembed import TextEmbedding
 
-        _model = SentenceTransformer(settings.embedding.model_name)
+        _model = TextEmbedding(model_name=settings.embedding.model_name)
     return _model
 
 
 def _embed(texts: list[str]) -> list[list[float]]:
     model = _get_model()
-    vectors: np.ndarray = cast(
-        np.ndarray,
-        model.encode(
-            texts,
-            batch_size=settings.embedding.batch_size,
-            normalize_embeddings=True,
-            show_progress_bar=False,
-        ),
-    )
-    return cast(list[list[float]], vectors.tolist())
+    return [
+        cast(list[float], vec.tolist())
+        for vec in model.embed(texts, batch_size=settings.embedding.batch_size)
+    ]
 
 
 async def async_embed(texts: list[str]) -> list[list[float]]:
