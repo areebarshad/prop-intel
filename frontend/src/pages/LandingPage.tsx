@@ -104,12 +104,14 @@ export default function LandingPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const trimmedMessage = message.trim();
+    if (reason === "Other" && !trimmedMessage) return;
     mutation.mutate({
       full_name: fullName.trim(),
       work_email: email.trim(),
       reason,
       company: company.trim() || undefined,
-      use_case_notes: reason === "Other" ? message.trim() || undefined : undefined,
+      use_case_notes: reason === "Other" ? trimmedMessage : undefined,
     });
   }
 
