@@ -14,9 +14,11 @@ import {
 import { api } from "../api/client";
 
 type ContactRequest = {
-  email: string;
+  full_name: string;
+  work_email: string;
   reason: string;
-  message?: string;
+  company?: string;
+  use_case_notes?: string;
 };
 
 const REASONS = ["Request a Demo", "Learn More", "Other"] as const;
@@ -91,6 +93,8 @@ function scrollTo(id: string) {
 
 export default function LandingPage() {
   const [reason, setReason] = useState<Reason>("Request a Demo");
+  const [fullName, setFullName] = useState("");
+  const [company, setCompany] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
 
@@ -101,9 +105,11 @@ export default function LandingPage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     mutation.mutate({
-      email: email.trim(),
+      full_name: fullName.trim(),
+      work_email: email.trim(),
       reason,
-      message: reason === "Other" ? message.trim() || undefined : undefined,
+      company: company.trim() || undefined,
+      use_case_notes: reason === "Other" ? message.trim() || undefined : undefined,
     });
   }
 
@@ -232,14 +238,44 @@ export default function LandingPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Your email
+                  Your name
+                </label>
+                <input
+                  type="text"
+                  required
+                  maxLength={200}
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Jane Doe"
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Work email
                 </label>
                 <input
                   type="email"
                   required
+                  maxLength={320}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Company <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  maxLength={200}
+                  value={company}
+                  onChange={(e) => setCompany(e.target.value)}
+                  placeholder="Acme Development"
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -268,6 +304,7 @@ export default function LandingPage() {
                   </label>
                   <textarea
                     required
+                    maxLength={2000}
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     rows={4}
