@@ -11,6 +11,7 @@ from app.db.base import Base
 from app.models.alert import Alert, AlertDelivery, Digest
 from app.models.document import DocumentChunk, EntityCandidate, RawDocument
 from app.models.firm import Firm, FirmAlias, FirmRelationship
+from app.models.lead import Lead
 from app.models.person import JobPosting, Person
 from app.models.project import Permit, PropertyProject
 from app.models.signal import Signal, TrendWindow
@@ -29,6 +30,7 @@ __all__ = [
     "FirmAlias",
     "FirmRelationship",
     "JobPosting",
+    "Lead",
     "Permit",
     "Person",
     "PropertyProject",

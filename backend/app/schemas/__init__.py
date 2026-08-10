@@ -6,7 +6,16 @@ from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 
 class FirmSummary(BaseModel):
@@ -244,6 +253,33 @@ class ApiKeyCreated(ApiKeyOut):
 
 
 class ContactRequest(BaseModel):
-    email: EmailStr
+    """A landing-page submission, stored as a row in `leads`.
+
+    Field names match the table. The aliases are the names the landing page
+    posts today, so both spellings validate and the form does not have to be
+    redeployed in lockstep with the API.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    work_email: EmailStr = Field(validation_alias=AliasChoices("work_email", "email"))
     reason: str = Field(pattern="^(Request a Demo|Learn More|Other)$")
-    message: str | None = Field(default=None, max_length=2000)
+    full_name: str | None = Field(
+        default=None, validation_alias=AliasChoices("full_name", "name"), max_length=200
+    )
+    company: str | None = Field(default=None, max_length=200)
+    role: str | None = Field(default=None, max_length=200)
+    use_case_notes: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("use_case_notes", "use_case", "message"),
+        max_length=2000,
+    )
+
+    @field_validator("full_name", "company", "role", "use_case_notes", mode="after")
+    @classmethod
+    def _blank_to_none(cls, v: str | None) -> str | None:
+        """An untouched form field arrives as "", which is not a value."""
+        if v is None:
+            return None
+        stripped = v.strip()
+        return stripped or None
