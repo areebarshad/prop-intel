@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { getToken, logout } from "../api/auth";
 
 const links = [
-  { to: "/", label: "Firms" },
+  { to: "/firms", label: "Firms" },
   { to: "/ask", label: "Ask" },
   { to: "/alerts", label: "Alerts" },
   { to: "/digest", label: "Digest" },
@@ -30,7 +30,7 @@ export default function Nav() {
             key={to}
             to={to}
             className={`text-sm ${
-              pathname === to
+              pathname === to || (to !== "/" && pathname.startsWith(to))
                 ? "text-blue-700 font-medium"
                 : "text-gray-500 hover:text-gray-800"
             }`}

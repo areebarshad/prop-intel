@@ -23,7 +23,7 @@ export default function Login() {
       } else {
         await register(email, password, fullName || undefined);
       }
-      navigate("/");
+      navigate("/firms");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Authentication failed.");
     } finally {
