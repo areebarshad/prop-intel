@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import sys
+import logging
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,8 @@ from app.core.deps import rate_limited_ip
 from app.db.session import get_db
 from app.models.lead import Lead
 from app.schemas import ContactRequest
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/contact", tags=["contact"])
 
@@ -25,11 +27,12 @@ def _fallback_full_name(email: str) -> str:
     return email.split("@", 1)[0][:200]
 
 
-@router.post("", status_code=200, dependencies=[Depends(rate_limited_ip)])
+@router.post("", status_code=200)
 async def submit_contact(
     body: ContactRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(rate_limited_ip),
 ) -> dict[str, str]:
     # `reason` has no column of its own; folding it into the notes keeps the
     # whole submission in one place rather than dropping it.
@@ -63,12 +66,21 @@ async def submit_contact(
         text_lines.append(f"Message: {body.use_case_notes}")
     text = "\n".join(text_lines)
 
-    if settings.notify.resend_api_key:
+    recipients = settings.notify.unique_contact_recipients
+    if not settings.notify.resend_api_key:
+        logger.info("contact notification skipped (no Resend API key); lead %s: %s", lead.id, text)
+    elif not recipients:
+        logger.warning(
+            "contact notification skipped for lead %s: no contact_recipients configured", lead.id
+        )
+    else:
         import httpx
 
+        # The lead is already committed above, so every failure path here only
+        # costs the notification — never the submission itself.
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                await client.post(
+                resp = await client.post(
                     "https://api.resend.com/emails",
                     headers={
                         "Authorization": (
@@ -77,15 +89,21 @@ async def submit_contact(
                     },
                     json={
                         "from": settings.notify.from_email,
-                        "to": ["areebarshad@vt.edu"],
+                        "to": recipients,
                         "reply_to": body.work_email,
                         "subject": subject,
                         "text": text,
                     },
                 )
-        except Exception as exc:
-            print(f"[CONTACT] Resend error: {exc}", file=sys.stderr)
-    else:
-        print(f"[CONTACT] {text}", file=sys.stderr)
+                resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            logger.warning(
+                "resend error %s for lead %s: %s",
+                exc.response.status_code,
+                lead.id,
+                exc.response.text[:200],
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("contact notification failed for lead %s: %s", lead.id, exc)
 
     return {"status": "ok"}

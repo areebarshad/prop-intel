@@ -122,8 +122,24 @@ class NotifySettings(BaseSettings):
     resend_api_key: SecretStr | None = None
     slack_webhook_url: SecretStr | None = None
     from_email: str = "alerts@propintel.local"
+    # Where landing page contact submissions are forwarded. Resend rejects a
+    # payload with the same address listed twice, so the list is deduplicated
+    # (case-insensitively, order preserved) before it is sent.
+    contact_recipients: list[str] = Field(default_factory=lambda: ["areebarshad@vt.edu"])
 
     model_config = SettingsConfigDict(extra="ignore")
+
+    @property
+    def unique_contact_recipients(self) -> list[str]:
+        seen: set[str] = set()
+        out: list[str] = []
+        for raw in self.contact_recipients:
+            addr = raw.strip()
+            key = addr.lower()
+            if addr and key not in seen:
+                seen.add(key)
+                out.append(addr)
+        return out
 
 
 class Settings(BaseSettings):
