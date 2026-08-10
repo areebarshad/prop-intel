@@ -164,8 +164,12 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def _require_async_driver(cls, v: str) -> str:
-        # A bare postgresql:// URL fails deep inside the async engine with a
-        # confusing error; catch it here where the fix is obvious.
+        # Neon and most providers hand out bare postgresql:// or postgres:// URLs.
+        # Auto-add the asyncpg driver so users don't need to remember the suffix.
+        if v.startswith("postgres://"):
+            v = "postgresql+asyncpg://" + v[len("postgres://") :]
+        elif v.startswith("postgresql://"):
+            v = "postgresql+asyncpg://" + v[len("postgresql://") :]
         if not v.startswith("postgresql+"):
             raise ValueError(
                 "database_url needs an explicit driver, e.g. "
