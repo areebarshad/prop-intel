@@ -238,3 +238,12 @@ class ApiKeyCreated(ApiKeyOut):
     """Returned only at creation — the plaintext key is not stored."""
 
     key: str
+
+
+# ── Contact ────────────────────────────────────────────────────────────────────
+
+
+class ContactRequest(BaseModel):
+    email: EmailStr
+    reason: str = Field(pattern="^(Request a Demo|Learn More|Other)$")
+    message: str | None = Field(default=None, max_length=2000)
